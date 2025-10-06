@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import { useState } from "react";
 
@@ -6,33 +6,35 @@ export default function ChatPage() {
   const [question, setQuestion] = useState("");
   const [answers, setAnswers] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!question.trim()) return;
+    if (!question) return;
 
     setLoading(true);
-    setError("");
-    setAnswers([]);
 
     try {
-      const res = await fetch(
-        `http://144.91.115.48:8000/api/ask?q=${encodeURIComponent(question)}`
-      );
-
+      // Κάνουμε fetch στο proxy του Next.js, όχι απευθείας στο backend
+      const res = await fetch(`/api/ask?q=${encodeURIComponent(question)}`);
       if (!res.ok) {
-        throw new Error(`Server responded with status ${res.status}`);
+        throw new Error(`Request failed: ${res.status}`);
       }
 
       const data = await res.json();
 
-      // Αν η απάντηση έρχεται ως array από objects με text:
-      const texts = data.answer?.map((a: any) => a.text) || [];
-      setAnswers(texts);
+      // Αν το backend επιστρέφει text ή array, προσαρμόζουμε εδώ
+      if (Array.isArray(data)) {
+        setAnswers(data);
+      } else if (data.answer) {
+        setAnswers([data.answer]);
+      } else {
+        setAnswers([JSON.stringify(data)]);
+      }
+
+      setQuestion("");
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Something went wrong");
+      setAnswers([`Error: ${err.message}`]);
     } finally {
       setLoading(false);
     }
@@ -42,37 +44,26 @@ export default function ChatPage() {
     <div className="max-w-2xl mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">AI Docs Chat</h1>
 
-      <form onSubmit={handleSubmit} className="mb-4">
+      <form onSubmit={handleSubmit} className="mb-4 flex gap-2">
         <input
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Γράψε την ερώτησή σου..."
-          className="border p-2 w-full rounded mb-2"
+          placeholder="Type your question..."
+          className="flex-1 p-2 border rounded"
         />
-        <button
-          type="submit"
-          className="bg-blue-500 text-white px-4 py-2 rounded"
-          disabled={loading}
-        >
-          {loading ? "Στέλνεται..." : "Ρώτησε"}
+        <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-500 text-white rounded">
+          {loading ? "Loading..." : "Ask"}
         </button>
       </form>
 
-      {error && <p className="text-red-500 mb-4">{error}</p>}
-
-      {answers.length > 0 && (
-        <div className="space-y-2">
-          {answers.map((text, i) => (
-            <div
-              key={i}
-              className="border p-2 rounded bg-gray-100"
-            >
-              {text}
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="space-y-2">
+        {answers.map((ans, idx) => (
+          <div key={idx} className="p-2 border rounded bg-gray-100">
+            {ans}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
