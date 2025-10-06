@@ -1,39 +1,45 @@
 from fastapi import FastAPI, Query
-import os, subprocess, pickle, numpy as np, faiss
+from fastapi.middleware.cors import CORSMiddleware
+import faiss
+import pickle
 from sentence_transformers import SentenceTransformer
+import numpy as np
 
 app = FastAPI()
 
-DOCS_PATH = os.getenv("DOCS_PATH", "/data/docs")
-FAISS_INDEX = os.getenv("FAISS_INDEX", "/data/faiss.index")
-DOCS_META = os.getenv("DOCS_META", "/data/docs_meta.json")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral")
+# CORS για frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # ή ["https://το-domain-σου"] όταν έχεις frontend
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
+# Φόρτωσε FAISS και metadata
+index = faiss.read_index("/data/faiss.index")
+with open("/data/docs_meta.pkl", "rb") as f:
+    docs_meta = pickle.load(f)
+
+# Φόρτωσε μοντέλο embeddings
 model = SentenceTransformer("all-MiniLM-L6-v2")
 
-try:
-    index = faiss.read_index(FAISS_INDEX)
-    with open(DOCS_META, "rb") as f:
-        docs_meta = pickle.load(f)
-except:
-    index = None
-    docs_meta = []
+# API για ερωτήσεις
+@app.get("/api/ask")
+def ask(q: str = Query(..., min_length=1)):
+    # Δημιουργία embedding για την ερώτηση
+    q_vec = model.encode([q], convert_to_numpy=True)
 
-@app.get("/ask")
-def ask(q: str = Query(...)):
-    if not index:
-        return {"answer": "⚠️ Δεν υπάρχει index", "sources": []}
+    # Αναζήτηση στον FAISS
+    k = 3  # πόσα κοντινά chunks θέλουμε
+    D, I = index.search(q_vec, k)
 
-    q_emb = model.encode([q])
-    D, I = index.search(np.array(q_emb, dtype=np.float32), k=3)
+    results = []
+    for idx in I[0]:
+        if idx < len(docs_meta):
+            chunk = docs_meta[idx]
+            results.append({
+                "text": chunk["text"],
+                "source": chunk["filename"]
+            })
 
-    sources, context_chunks = [], []
-    for i in I[0]:
-        context_chunks.append(docs_meta[i]["text"])
-        sources.append(docs_meta[i]["filename"])
-
-    context = "\n".join(context_chunks)
-    prompt = f"Χρησιμοποίησε το παρακάτω context:\n{context}\n\nΕρώτηση: {q}\nΑπάντησε στα ελληνικά:"
-
-    ollama_res = subprocess.check_output(["ollama", "run", OLLAMA_MODEL], input=prompt.encode())
-    return {"answer": ollama_res.decode(), "sources": sources}
+    return {"answer": results}
