@@ -1,65 +1,65 @@
-"use client";
-
+"use client"; // Αυτό χρειάζεται για Next.js App Router για state/hooks
 import { useState } from "react";
-import axios from "axios";
-import MessageBubble from "../../components/MessageBubble";
+
+interface Result {
+  text: string;
+  source: string;
+}
 
 export default function ChatPage() {
-  const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<
-    { text: string; sender: "user" | "ai"; sources?: string[] }[]
-  >([]);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Result[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const sendMessage = async () => {
-    if (!input) return;
-    // Προσθέτουμε το μήνυμα του χρήστη
-    setMessages((prev) => [...prev, { text: input, sender: "user" }]);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!query.trim()) return;
+
     setLoading(true);
+
     try {
-      const res = await axios.post("http://backend:8000/ask", {
-        question: input,
-      });
-      const answer = res.data.answer;
-      const sources = res.data.sources; // αν το backend επιστρέφει πηγές
-      setMessages((prev) => [...prev, { text: answer, sender: "ai", sources }]);
+      const res = await fetch(`/api/ask?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+
+      if (data.answer) {
+        setResults(data.answer);
+      } else {
+        setResults([]);
+      }
     } catch (err) {
-      console.error(err);
-      setMessages((prev) => [
-        ...prev,
-        { text: "Error getting answer from backend", sender: "ai" },
-      ]);
+      console.error("Error fetching results:", err);
+      setResults([]);
     } finally {
       setLoading(false);
-      setInput("");
     }
   };
 
   return (
-    <div className="p-4 flex flex-col h-screen max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">AI Docs Chat</h1>
-      <div className="flex-1 overflow-auto mb-4 flex flex-col">
-        {messages.map((msg, i) => (
-          <MessageBubble key={i} text={msg.text} sender={msg.sender} sources={msg.sources} />
-        ))}
-      </div>
-      <div className="flex">
+    <div style={{ maxWidth: "800px", margin: "2rem auto", padding: "1rem" }}>
+      <h1>AI Chat</h1>
+
+      <form onSubmit={handleSubmit} style={{ marginBottom: "1rem" }}>
         <input
           type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask a question..."
-          className="flex-1 border p-2 rounded-l"
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          disabled={loading}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Γράψε την ερώτησή σου..."
+          style={{ width: "70%", padding: "0.5rem", fontSize: "1rem" }}
         />
-        <button
-          onClick={sendMessage}
-          className="bg-blue-500 text-white p-2 rounded-r"
-          disabled={loading}
-        >
-          {loading ? "..." : "Send"}
+        <button type="submit" style={{ padding: "0.5rem 1rem", marginLeft: "1rem" }}>
+          Ρώτησε
         </button>
+      </form>
+
+      {loading && <p>Φόρτωση αποτελεσμάτων...</p>}
+
+      <div>
+        {results.map((r, i) => (
+          <div key={i} style={{ border: "1px solid #ccc", padding: "1rem", marginBottom: "1rem" }}>
+            <p>{r.text}</p>
+            <small>Πηγή: {r.source}</small>
+          </div>
+        ))}
       </div>
     </div>
   );
