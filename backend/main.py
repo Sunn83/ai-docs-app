@@ -1,29 +1,23 @@
-from fastapi import FastAPI, Query
-from sentence_transformers import SentenceTransformer
-import faiss
-import json
 import os
+from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
+from index_docs import index_all_documents, search_documents
 
-app = FastAPI()
+app = FastAPI(title="AI Docs App")
 
-# Load model και index
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-index = faiss.read_index("/data/faiss.index")
-
-# Load metadata
-with open("/data/docs_meta.json", "r", encoding="utf-8") as f:
-    docs_meta = json.load(f)
-
-# Προσπάθεια να σερβιριστεί το frontend μόνο αν υπάρχει
+# Δρομολογούμε το frontend μόνο αν υπάρχει
 frontend_path = os.path.join(os.path.dirname(__file__), "../frontend")
 if os.path.exists(frontend_path):
     app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
-else:
-    print(f"Frontend folder not found at {frontend_path}. Serving API only.")
 
+# API για αναζήτηση
 @app.get("/api/ask")
 def ask(q: str = Query(..., min_length=1)):
-    try:
-        print("Received query:", q)
-        q_vec = model.encode([q], convert_to_numpy_
+    results = search_documents(q)
+    return {"answer": results}
+
+# Προαιρετικά: endpoint για reindex
+@app.post("/api/reindex")
+def reindex():
+    index_all_documents()
+    return {"status": "✅ Indexing complete"}
