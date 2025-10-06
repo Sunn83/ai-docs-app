@@ -18,7 +18,7 @@
     
     "baseUrl": "frontend",          // <-- πρόσθεσε αυτό
     "paths": {
-      "@/*": ["app/*"]             // <-- πρόσθεσε αυτό
+       "@/components/*": ["components/*"]           // <-- πρόσθεσε αυτό
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
