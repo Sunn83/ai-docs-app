@@ -14,7 +14,12 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "plugins": []
+    "plugins": [],
+    
+    "baseUrl": "frontend",          // <-- πρόσθεσε αυτό
+    "paths": {
+      "@/*": ["app/*"]             // <-- πρόσθεσε αυτό
+    }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]
