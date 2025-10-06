@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import axios from "axios";
-import MessageBubble from "@/components/MessageBubble";
+import MessageBubble from "../../components/MessageBubble";
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<{ text: string; sender: string; sources?: string[] }[]>([]);
