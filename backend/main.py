@@ -1,45 +1,42 @@
 from fastapi import FastAPI, Query
-from fastapi.middleware.cors import CORSMiddleware
-import faiss
-import pickle
 from sentence_transformers import SentenceTransformer
-import numpy as np
+import faiss
+import json
 
 app = FastAPI()
 
-# CORS για frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # ή ["https://το-domain-σου"] όταν έχεις frontend
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Φόρτωσε FAISS και metadata
+# Load model και index
+model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 index = faiss.read_index("/data/faiss.index")
-with open("/data/docs_meta.pkl", "rb") as f:
-    docs_meta = pickle.load(f)
 
-# Φόρτωσε μοντέλο embeddings
-model = SentenceTransformer("all-MiniLM-L6-v2")
+# Load metadata
+with open("/data/docs_meta.json", "r", encoding="utf-8") as f:
+    docs_meta = json.load(f)
 
-# API για ερωτήσεις
 @app.get("/api/ask")
 def ask(q: str = Query(..., min_length=1)):
-    # Δημιουργία embedding για την ερώτηση
-    q_vec = model.encode([q], convert_to_numpy=True)
+    try:
+        print("Received query:", q)
+        q_vec = model.encode([q], convert_to_numpy=True)
+        D, I = index.search(q_vec, k=5)
+        print("Indices found:", I)
+        print("Distances:", D)
 
-    # Αναζήτηση στον FAISS
-    k = 3  # πόσα κοντινά chunks θέλουμε
-    D, I = index.search(q_vec, k)
+        results = []
+        for idx in I[0]:
+            if idx < len(docs_meta):
+                chunk = docs_meta[idx]
+                print("Using chunk from file:", chunk.get("filename"))
+                results.append({
+                    "text": chunk.get("text"),
+                    "source": chunk.get("filename")
+                })
+            else:
+                print("Index out of range:", idx)
 
-    results = []
-    for idx in I[0]:
-        if idx < len(docs_meta):
-            chunk = docs_meta[idx]
-            results.append({
-                "text": chunk["text"],
-                "source": chunk["filename"]
-            })
-
-    return {"answer": results}
+        if not results:
+            print("No results found for query.")
+        return {"answer": results}
+    except Exception as e:
+        print("ERROR:", e)
+        return {"error": str(e)}
