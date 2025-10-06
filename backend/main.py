@@ -10,7 +10,7 @@ model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 index = faiss.read_index("/data/faiss.index")
 
 # Load metadata
-with open("/data/docs_meta.json", "r", encoding="utf-8") as f:
+with open("/data/docs_meta.json", "rb", encoding="utf-8") as f:
     docs_meta = json.load(f)
 
 @app.get("/api/ask")
