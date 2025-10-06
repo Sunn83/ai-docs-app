@@ -1,27 +1,23 @@
 from fastapi import FastAPI, Query
-from fastapi.staticfiles import StaticFiles
-import os
 from sentence_transformers import SentenceTransformer
 import faiss
 import json
-import pickle
 
-app = FastAPI()
-
-# Mount frontend
-frontend_path = os.path.join(os.path.dirname(__file__), '../frontend')
-app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
+app = FastAPI(title="AI Docs API")
 
 # Load model και index
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 index = faiss.read_index("/data/faiss.index")
 
-# Load metadata (pickle format)
-with open("/data/docs_meta.json", "rb") as f:
-    docs_meta = pickle.load(f)
+# Load metadata
+with open("/data/docs_meta.json", "r", encoding="utf-8") as f:
+    docs_meta = json.load(f)
 
 @app.get("/api/ask")
 def ask(q: str = Query(..., min_length=1)):
+    """
+    Accepts a query string and returns top-5 matching document chunks.
+    """
     try:
         print("Received query:", q)
         q_vec = model.encode([q], convert_to_numpy=True)
@@ -44,6 +40,7 @@ def ask(q: str = Query(..., min_length=1)):
         if not results:
             print("No results found for query.")
         return {"answer": results}
+
     except Exception as e:
         print("ERROR:", e)
         return {"error": str(e)}
