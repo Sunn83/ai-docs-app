@@ -2,6 +2,7 @@ from fastapi import FastAPI, Query
 from sentence_transformers import SentenceTransformer
 import faiss
 import json
+import pickle
 
 app = FastAPI()
 
@@ -9,9 +10,9 @@ app = FastAPI()
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 index = faiss.read_index("/data/faiss.index")
 
-# Load metadata
-with open("/data/docs_meta.json", "rb", encoding="utf-8") as f:
-    docs_meta = json.load(f)
+# Load metadata (pickle format)
+with open("/data/docs_meta.json", "rb") as f:
+    docs_meta = pickle.load(f)
 
 @app.get("/api/ask")
 def ask(q: str = Query(..., min_length=1)):
