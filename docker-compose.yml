@@ -5,6 +5,8 @@ services:
     volumes:
       - ./data:/data
     container_name: ai-backend
+    ports:
+      - "8000:8000"  # <host>:<container>
 
   frontend:
     build: ./frontend
