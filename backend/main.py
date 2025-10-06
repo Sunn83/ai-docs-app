@@ -1,10 +1,16 @@
 from fastapi import FastAPI, Query
+from fastapi.staticfiles import StaticFiles
+import os
 from sentence_transformers import SentenceTransformer
 import faiss
 import json
 import pickle
 
 app = FastAPI()
+
+# Mount frontend
+frontend_path = os.path.join(os.path.dirname(__file__), '../frontend')
+app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
 
 # Load model και index
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
