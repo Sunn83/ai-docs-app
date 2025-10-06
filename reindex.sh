@@ -1,2 +1,2 @@
 #!/bin/bash
-docker exec -it ai-backend python index_docs.py
+docker exec -it backend python index_docs.py
