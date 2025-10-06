@@ -2,8 +2,10 @@ from fastapi import FastAPI, Query
 from sentence_transformers import SentenceTransformer
 import faiss
 import json
+import os
+from fastapi.staticfiles import StaticFiles
 
-app = FastAPI(title="AI Docs API")
+app = FastAPI()
 
 # Load model και index
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
@@ -13,34 +15,15 @@ index = faiss.read_index("/data/faiss.index")
 with open("/data/docs_meta.json", "r", encoding="utf-8") as f:
     docs_meta = json.load(f)
 
+# Προσπάθεια να σερβιριστεί το frontend μόνο αν υπάρχει
+frontend_path = os.path.join(os.path.dirname(__file__), "../frontend")
+if os.path.exists(frontend_path):
+    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
+else:
+    print(f"Frontend folder not found at {frontend_path}. Serving API only.")
+
 @app.get("/api/ask")
 def ask(q: str = Query(..., min_length=1)):
-    """
-    Accepts a query string and returns top-5 matching document chunks.
-    """
     try:
         print("Received query:", q)
-        q_vec = model.encode([q], convert_to_numpy=True)
-        D, I = index.search(q_vec, k=5)
-        print("Indices found:", I)
-        print("Distances:", D)
-
-        results = []
-        for idx in I[0]:
-            if idx < len(docs_meta):
-                chunk = docs_meta[idx]
-                print("Using chunk from file:", chunk.get("filename"))
-                results.append({
-                    "text": chunk.get("text"),
-                    "source": chunk.get("filename")
-                })
-            else:
-                print("Index out of range:", idx)
-
-        if not results:
-            print("No results found for query.")
-        return {"answer": results}
-
-    except Exception as e:
-        print("ERROR:", e)
-        return {"error": str(e)}
+        q_vec = model.encode([q], convert_to_numpy_
