@@ -1,6 +1,6 @@
 fastapi
-uvicorn
+uvicorn[standard]
+python-multipart
 python-docx
-sentence-transformers
 faiss-cpu
-requests
+starlette
