@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build"
-  },
+  "dev": "next dev",
+  "build": "next build",
+  "start": "next start -p 3000"
+},
   "dependencies": {
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
