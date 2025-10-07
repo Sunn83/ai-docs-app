@@ -10,11 +10,13 @@ services:
   frontend:
     build:
       context: ./frontend
-    container_name: ai-docs-app-frontend
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
-    restart: unless-stopped
-    command: ["npm", "start"]
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - backend
 
   nginx:
     image: nginx:latest
