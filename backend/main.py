@@ -12,11 +12,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# GET endpoint
 @app.get("/api/ask")
 async def ask_get(q: str = Query(...)):
-    return {"answer": f"You asked: {q}"}
+    return {"answer": f"You asked (GET): {q}"}
 
+# POST endpoint
 @app.post("/api/ask")
 async def ask_post(payload: dict):
     query = payload.get("query")
-    return {"answer": f"You asked: {query}"}
+    return {"answer": f"You asked (POST): {query}"}
