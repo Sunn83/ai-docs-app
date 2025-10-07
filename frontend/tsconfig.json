@@ -16,11 +16,11 @@
     "incremental": true,
     "plugins": [],
     
-    "baseUrl": "frontend",          // <-- πρόσθεσε αυτό
+    "baseUrl": "src",          // <-- πρόσθεσε αυτό
     "paths": {
        "@/components/*": ["components/*"]           // <-- πρόσθεσε αυτό
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+  "include": ["src", "**/*.ts", "**/*.tsx"]
   "exclude": ["node_modules"]
 }
