@@ -1,37 +1,19 @@
-version: '3.9'
-
+version: "3.9"
 services:
   backend:
     build: ./backend
     container_name: ai-docs-app_backend
     ports:
       - "8000:8000"
-    environment:
-      - PYTHONUNBUFFERED=1
     volumes:
       - ./backend:/app
-    restart: always
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
     build: ./frontend
     container_name: ai-docs-app_frontend
     ports:
       - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-    depends_on:
-      - backend
-    restart: always
-
-  nginx:
-    image: nginx:latest
-    container_name: ai-nginx
-    ports:
-      - "80:80"
-      - "443:443"
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - frontend
-      - backend
-    restart: always
+      - ./frontend:/app
+    command: npm run dev
