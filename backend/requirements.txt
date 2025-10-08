@@ -1,4 +1,7 @@
 fastapi
 uvicorn
 python-multipart
-aiofiles
+requests
+faiss-cpu
+pandas
+numpy
