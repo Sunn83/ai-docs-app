@@ -1,6 +1,25 @@
 'use client'
 import { useState } from 'react'
 import axios from 'axios'
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { authOptions } from "../api/auth/[...nextauth]/route";
+
+export default async function ChatPage() {
+  const session = await getServerSession(authOptions);
+
+  if (!session) {
+    redirect("/login");
+  }
+
+  return (
+    <div className="p-8">
+      <h1 className="text-2xl font-semibold mb-4">AI Chat</h1>
+      {/* εδώ συνεχίζεται ο κώδικας του chat */}
+    </div>
+  );
+}
+
 
 export default function ChatPage() {
   const [input, setInput] = useState('')
