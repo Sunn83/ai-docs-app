@@ -1,3 +1,60 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* --- Global Styles --- */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #f9fafb;
+  color: #111827;
+  font-family: 'Inter', sans-serif;
+}
+
+/* Κεντρική στοίχιση περιεχομένου */
+main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+/* Κουμπιά */
+button {
+  @apply px-4 py-2 rounded-xl font-medium transition-colors duration-200;
+}
+
+button:hover {
+  @apply opacity-90;
+}
+
+/* Input πεδία */
+input, textarea {
+  @apply border border-gray-300 rounded-lg px-3 py-2 w-full;
+}
+
+input:focus, textarea:focus {
+  @apply outline-none ring-2 ring-blue-500;
+}
+
+/* Κάρτες, containers */
+.card {
+  @apply bg-white shadow-md rounded-2xl p-6 max-w-xl w-full;
+}
+
+/* Chat bubbles */
+.message {
+  @apply p-3 my-2 rounded-2xl max-w-xl;
+}
+
+.message.user {
+  @apply bg-blue-100 self-end;
+}
+
+.message.bot {
+  @apply bg-gray-100 self-start;
+}
