@@ -1,8 +1,11 @@
-import { NextResponse } from 'next/server'
-import axios from 'axios'
+// frontend/app/api/ask/route.ts
+import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(req: Request) {
-  const { question } = await req.json()
-  const res = await axios.post('http://backend:8000/api/ask', { question })
-  return NextResponse.json(res.data)
+export async function POST(req: NextRequest) {
+  const { question } = await req.json();
+
+  // Προσομοίωση απάντησης
+  const answer = `You asked: "${question}"`;
+
+  return NextResponse.json({ answer });
 }
