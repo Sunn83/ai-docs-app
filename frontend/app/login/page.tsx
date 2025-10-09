@@ -1,48 +1,53 @@
-"use client";
+'use client'
 
-import { useState } from "react";
-import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useState } from 'react'
+import { signIn } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const router = useRouter()
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const result = await signIn("credentials", {
-      username,
+    e.preventDefault()
+    const res = await signIn('credentials', {
+      email,
       password,
-      redirect: false
-    });
+      redirect: false,
+    })
 
-    if (result?.ok) {
-      router.push("/chat");
+    if (res?.ok) {
+      router.push('/chat')
     } else {
-      setError("Invalid username or password");
+      setError('Μη έγκυρα στοιχεία.')
     }
-  };
+  }
 
   return (
-    <div>
-      <h1>Login</h1>
-      <form onSubmit={handleSubmit}>
+    <div className="flex flex-col items-center justify-center h-screen">
+      <form onSubmit={handleSubmit} className="p-6 rounded bg-gray-100 shadow-md w-80">
+        <h1 className="text-xl mb-4 text-center font-semibold">Σύνδεση</h1>
         <input
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full p-2 mb-3 border rounded"
         />
         <input
-          placeholder="Password"
           type="password"
+          placeholder="Κωδικός"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
+          className="w-full p-2 mb-3 border rounded"
         />
-        <button type="submit">Login</button>
+        <button type="submit" className="w-full bg-blue-500 text-white py-2 rounded">
+          Σύνδεση
+        </button>
+        {error && <p className="text-red-500 text-sm mt-3">{error}</p>}
       </form>
-      {error && <p style={{ color: "red" }}>{error}</p>}
     </div>
-  );
+  )
 }
