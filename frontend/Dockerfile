@@ -1,19 +1,19 @@
 # ---------- Stage 1: Build ----------
 FROM node:20-alpine AS builder
 
-# Set working directory
+# Ο φάκελος εργασίας μέσα στο container
 WORKDIR /app
 
-# Copy package.json and package-lock.json first (for caching)
-COPY package*.json ./
+# Αντιγράφουμε τα αρχεία package.json και package-lock.json από το frontend
+COPY frontend/package*.json ./
 
-# Install dependencies
+# Εγκατάσταση dependencies (συμπεριλαμβανομένου του axios και next-auth)
 RUN npm install --legacy-peer-deps
 
-# Copy rest of the app
-COPY . .
+# Αντιγραφή όλων των υπόλοιπων αρχείων του frontend
+COPY frontend/. .
 
-# Build the Next.js app
+# Δημιουργία production build
 RUN npm run build
 
 # ---------- Stage 2: Production ----------
@@ -21,19 +21,17 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Copy only necessary files from builder
+# Αντιγραφή μόνο όσων χρειάζονται από το προηγούμενο στάδιο
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package*.json ./
 
-# Install only production dependencies
+# Εγκατάσταση μόνο production dependencies
 RUN npm install --only=production --legacy-peer-deps
 
-# Set environment
 ENV NODE_ENV=production
 
-# Expose port
 EXPOSE 3000
 
-# Start app
+# Εκκίνηση του Next.js server
 CMD ["npm", "start"]
