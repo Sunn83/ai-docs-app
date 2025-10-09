@@ -1,27 +1,48 @@
-'use client'
-import { useState } from 'react'
+"use client";
+
+import { useState } from "react";
+import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const [user, setUser] = useState('')
-  const [pass, setPass] = useState('')
-  const [error, setError] = useState('')
+  const router = useRouter();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
 
-  const login = () => {
-    if (user === 'admin' && pass === '123456') {
-      localStorage.setItem('auth', 'true')
-      window.location.href = '/chat'
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const result = await signIn("credentials", {
+      username,
+      password,
+      redirect: false
+    });
+
+    if (result?.ok) {
+      router.push("/chat");
     } else {
-      setError('Λάθος στοιχεία')
+      setError("Invalid username or password");
     }
-  }
+  };
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen">
-      <h1 className="text-2xl mb-4 font-bold">Login</h1>
-      <input className="border p-2 mb-2" placeholder="username" onChange={e => setUser(e.target.value)} />
-      <input className="border p-2 mb-2" placeholder="password" type="password" onChange={e => setPass(e.target.value)} />
-      <button className="bg-blue-500 text-white px-4 py-2 rounded" onClick={login}>Σύνδεση</button>
-      {error && <p className="text-red-500 mt-2">{error}</p>}
+    <div>
+      <h1>Login</h1>
+      <form onSubmit={handleSubmit}>
+        <input
+          placeholder="Username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+        />
+        <input
+          placeholder="Password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <button type="submit">Login</button>
+      </form>
+      {error && <p style={{ color: "red" }}>{error}</p>}
     </div>
-  )
+  );
 }
