@@ -3,16 +3,16 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Αντιγραφή μόνο των package files για caching
+# Αντιγραφή package.json για caching
 COPY package*.json ./
 
 # Εγκατάσταση dependencies
 RUN npm install --legacy-peer-deps
 
-# Αντιγραφή όλων των υπολοίπων αρχείων του frontend
+# Αντιγραφή υπόλοιπων αρχείων
 COPY . .
 
-# Build Next.js app
+# Δημιουργία production build
 RUN npm run build
 
 # ---------- Stage 2: Production ----------
@@ -20,7 +20,7 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Αντιγραφή απαραίτητων φακέλων από builder
+# Αντιγραφή build
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package*.json ./
