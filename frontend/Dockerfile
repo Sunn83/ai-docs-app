@@ -1,19 +1,18 @@
 # ---------- Stage 1: Build ----------
 FROM node:20-alpine AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json first (for caching)
+# Αντιγραφή μόνο των package files για caching
 COPY package*.json ./
 
-# Install dependencies
+# Εγκατάσταση dependencies
 RUN npm install --legacy-peer-deps
 
-# Copy rest of the app
+# Αντιγραφή όλων των υπολοίπων αρχείων του frontend
 COPY . .
 
-# Build the Next.js app
+# Build Next.js app
 RUN npm run build
 
 # ---------- Stage 2: Production ----------
@@ -21,19 +20,16 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Copy only necessary files from builder
+# Αντιγραφή απαραίτητων φακέλων από builder
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package*.json ./
 
-# Install only production dependencies
+# Εγκατάσταση μόνο production dependencies
 RUN npm install --only=production --legacy-peer-deps
 
-# Set environment
 ENV NODE_ENV=production
 
-# Expose port
 EXPOSE 3000
 
-# Start app
 CMD ["npm", "start"]
