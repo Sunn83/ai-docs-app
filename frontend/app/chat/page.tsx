@@ -1,16 +1,18 @@
-// frontend/app/chat/page.tsx
-import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
+import { getServerSession } from "next-auth/next";
 import { authOptions } from "../api/auth/[...nextauth]/route";
-import ChatClient from "./ChatClient";
+import { redirect } from "next/navigation";
 
 export default async function ChatPage() {
-  // Server-side session
   const session = await getServerSession(authOptions);
 
   if (!session) {
-    redirect("/login"); // Server-side redirect αν δεν υπάρχει session
+    redirect("/login");
   }
 
-  return <ChatClient session={session} />;
+  return (
+    <div>
+      <h1>Welcome to Chat, {session.user?.name}</h1>
+      <p>Here will go your chat UI...</p>
+    </div>
+  );
 }
