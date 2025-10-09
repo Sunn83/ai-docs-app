@@ -20,14 +20,19 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Αντιγραφή build
+# Αντιγραφή build και public folder
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package*.json ./
 
-# Install production dependencies
+# Install only production dependencies
 RUN npm install --only=production --legacy-peer-deps
 
+# Set environment
 ENV NODE_ENV=production
+
+# Expose port
 EXPOSE 3000
+
+# Start app
 CMD ["npm", "start"]
