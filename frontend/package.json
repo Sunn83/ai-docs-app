@@ -8,10 +8,16 @@
     "start": "next start"
   },
   "dependencies": {
+    "axios": "^1.12.2",
     "next": "14.1.0",
+    "next-auth": "^4.24.11",
     "react": "18.2.0",
+<<<<<<< HEAD
     "react-dom": "18.2.0",
     "axios": "^1.7.4",
     "next-auth": "^4.24.11"
+=======
+    "react-dom": "18.2.0"
+>>>>>>> 6c5ed86 (add axios dependency)
   }
 }
