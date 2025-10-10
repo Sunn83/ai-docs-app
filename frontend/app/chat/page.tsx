@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import ChatClient from "@/components/ChatClient";
+import ChatClient from './ChatClient';
 
 export default function ChatPage() {
   const { data: session } = useSession();
