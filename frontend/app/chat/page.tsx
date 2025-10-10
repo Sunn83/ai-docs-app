@@ -1,18 +1,28 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "../api/auth/[...nextauth]/route";
-import { redirect } from "next/navigation";
+// frontend/app/chat/page.tsx
+"use client";
 
-export default async function ChatPage() {
-  const session = await getServerSession(authOptions);
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import ChatClient from "./ChatClient";
 
-  if (!session) {
-    redirect("/login");
+export default function ChatPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/login");
+    }
+  }, [status, router]);
+
+  if (status === "loading") {
+    return <div className="p-8 text-center">Φόρτωση...</div>;
   }
 
-  return (
-    <div>
-      <h1>Welcome to Chat, {session.user?.name}</h1>
-      <p>Here will go your chat UI...</p>
-    </div>
-  );
+  if (!session) {
+    return null;
+  }
+
+  return <ChatClient />;
 }
