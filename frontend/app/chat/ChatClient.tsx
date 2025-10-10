@@ -1,50 +1,25 @@
-// frontend/app/chat/ChatClient.tsx
 "use client";
 
+import { Session } from "next-auth";
 import { useState } from "react";
-import axios from "axios";
 
 interface ChatClientProps {
-  session: any;
+  session: Session;
 }
 
 export default function ChatClient({ session }: ChatClientProps) {
   const [messages, setMessages] = useState<string[]>([]);
-  const [input, setInput] = useState("");
-
-  const ask = async () => {
-    if (!input.trim()) return;
-
-    try {
-      const res = await axios.post("/api/ask", { question: input });
-      setMessages(prev => [
-        ...prev,
-        `Ερώτηση: ${input}`,
-        `Απάντηση: ${res.data.answer}`,
-      ]);
-      setInput("");
-    } catch (err) {
-      console.error("Error sending question:", err);
-    }
-  };
 
   return (
-    <div>
-      <h1>Welcome, {session.user.name}</h1>
-
-      <div>
-        {messages.map((msg, i) => (
-          <p key={i}>{msg}</p>
-        ))}
+    <div className="p-4">
+      <h1 className="text-xl mb-2">Καλώς ήρθες, {session.user?.name || "χρήστη"}</h1>
+      <div className="border p-2 rounded bg-gray-50">
+        {messages.length === 0 ? (
+          <p>Δεν υπάρχουν μηνύματα ακόμα.</p>
+        ) : (
+          messages.map((msg, i) => <p key={i}>{msg}</p>)
+        )}
       </div>
-
-      <input
-        type="text"
-        value={input}
-        onChange={e => setInput(e.target.value)}
-        placeholder="Type your question..."
-      />
-      <button onClick={ask}>Send</button>
     </div>
   );
 }
