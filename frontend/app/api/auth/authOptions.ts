@@ -6,8 +6,8 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: "Credentials",
       credentials: {
-        username: { label: "Όνομα χρήστη", type: "text" },
-        password: { label: "Κωδικός", type: "password" },
+        username: { label: "Username", type: "text" },
+        password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
         const username = process.env.NEXTAUTH_USERNAME;
@@ -17,9 +17,9 @@ export const authOptions: NextAuthOptions = {
           credentials?.username === username &&
           credentials?.password === password
         ) {
-          return { id: "1", name: username };
+          return { id: "1", name: "Admin" };
         }
-        return null; // Λάθος στοιχεία → redirect στο /login?error=CredentialsSignin
+        return null;
       },
     }),
   ],
