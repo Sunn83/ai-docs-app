@@ -1,4 +1,4 @@
-"use client"; // <- Πρέπει να μπει στην πρώτη γραμμή
+'use client';
 
 export default function AuthError({ searchParams }: { searchParams: { error?: string } }) {
   const message = searchParams.error === "CredentialsSignin" ? "Λάθος Στοιχεία" : "Άγνωστο σφάλμα";
