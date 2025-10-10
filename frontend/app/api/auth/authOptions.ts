@@ -19,6 +19,7 @@ export const authOptions: NextAuthOptions = {
         ) {
           return { id: "1", name: "Admin" };
         }
+
         return null;
       },
     }),
@@ -26,6 +27,7 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
   pages: {
     signIn: "/login",
+    error: "/login/error",
   },
   session: {
     strategy: "jwt",
