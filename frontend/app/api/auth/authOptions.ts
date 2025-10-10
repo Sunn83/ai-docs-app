@@ -1,6 +1,5 @@
-// frontend/app/api/auth/authOptions.ts
 import CredentialsProvider from "next-auth/providers/credentials";
-import { NextAuthOptions } from "next-auth";
+import type { NextAuthOptions } from "next-auth";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -20,7 +19,6 @@ export const authOptions: NextAuthOptions = {
         ) {
           return { id: "1", name: "Admin" };
         }
-
         return null;
       },
     }),
