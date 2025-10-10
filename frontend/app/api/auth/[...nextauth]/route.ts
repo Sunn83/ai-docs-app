@@ -1,5 +1,5 @@
 import NextAuth from "next-auth";
-import { authOptions } from "../auth/authOptions";
+import { authOptions } from "../authOptions"; // ΣΩΣΤΗ διαδρομή
 
 const handler = NextAuth(authOptions);
 
