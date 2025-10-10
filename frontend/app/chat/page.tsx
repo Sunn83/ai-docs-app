@@ -2,26 +2,31 @@
 
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import ChatClient from "./ChatClient";
 import { useEffect } from "react";
+import ChatClient from "./ChatClient";
 
 export default function ChatPage() {
-  const { data: session, status } = useSession();
+  // Χρησιμοποιούμε το useSession ΜΟΝΟ σε client περιβάλλον
+  const sessionData = useSession();
   const router = useRouter();
 
+  // Αν δεν υπάρχει session, redirect στο /login
   useEffect(() => {
-    if (status === "unauthenticated") {
+    if (sessionData?.status === "unauthenticated") {
       router.push("/login");
     }
-  }, [status, router]);
+  }, [sessionData?.status, router]);
 
-  if (status === "loading") {
+  if (sessionData?.status === "loading") {
     return <p>Φόρτωση...</p>;
   }
 
-  if (!session) {
-    return null; // μην αποδίδεις τίποτα αν δεν υπάρχει session
+  if (!sessionData?.data) {
+    return null;
   }
 
-  return <ChatClient session={session} />;
+  return <ChatClient session={sessionData.data} />;
 }
+
+// ⚠️ Προσθέτουμε αυτό για να μη γίνεται prerender κατά το build
+export const dynamic = "force-dynamic";
