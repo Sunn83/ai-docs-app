@@ -1,10 +1,9 @@
-// frontend/app/chat/page.tsx
 "use client";
 
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import ChatClient from "./ChatClient";
+import { useEffect } from "react";
 
 export default function ChatPage() {
   const { data: session, status } = useSession();
@@ -17,12 +16,12 @@ export default function ChatPage() {
   }, [status, router]);
 
   if (status === "loading") {
-    return <div className="p-8 text-center">Φόρτωση...</div>;
+    return <p>Φόρτωση...</p>;
   }
 
   if (!session) {
-    return null;
+    return null; // μην αποδίδεις τίποτα αν δεν υπάρχει session
   }
 
-  return <ChatClient />;
+  return <ChatClient session={session} />;
 }
