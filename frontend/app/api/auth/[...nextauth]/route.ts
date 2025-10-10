@@ -1,7 +1,5 @@
 import NextAuth from "next-auth";
-// Αν το authOptions.ts είναι στον ίδιο φάκελο
-import { authOptions } from "./authOptions";
-
+import { authOptions } from "../authOptions";
 
 const handler = NextAuth(authOptions);
 
