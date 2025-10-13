@@ -5,3 +5,4 @@ requests
 faiss-cpu
 pandas
 numpy
+python-docx
