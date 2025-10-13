@@ -1,11 +1,12 @@
+// frontend/app/api/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
+import { queryDocs } from "../../../lib/faiss"; // παράδειγμα
 
-// Προσωρινά fake απάντηση – αργότερα συνδέουμε FAISS/Ollama
 export async function POST(req: NextRequest) {
   const { message } = await req.json();
 
-  // TODO: αντικατάστησε με κλήση σε backend/ollama/faiss
-  const reply = `Απάντηση στο: "${message}"`;
+  // Παίρνουμε απάντηση από FAISS/Ollama
+  const reply = await queryDocs(message);
 
   return NextResponse.json({ reply });
 }
