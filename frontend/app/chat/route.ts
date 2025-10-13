@@ -1,12 +1,13 @@
-// frontend/app/api/chat/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { queryDocs } from "../../../lib/faiss"; // παράδειγμα
+import { queryDocs } from "../../../lib/faiss";
 
 export async function POST(req: NextRequest) {
-  const { message } = await req.json();
-
-  // Παίρνουμε απάντηση από FAISS/Ollama
-  const reply = await queryDocs(message);
-
-  return NextResponse.json({ reply });
+  try {
+    const { message } = await req.json();
+    const reply = await queryDocs(message);
+    return NextResponse.json({ reply });
+  } catch (error) {
+    console.error("API /chat error:", error);
+    return NextResponse.json({ reply: "Σφάλμα στον server." }, { status: 500 });
+  }
 }
