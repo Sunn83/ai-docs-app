@@ -4,12 +4,8 @@ export async function POST(req: NextRequest) {
   try {
     const { question } = await req.json();
 
-    if (!question || !question.trim()) {
-      return NextResponse.json({ answer: "Παρακαλώ δώσε μια ερώτηση." });
-    }
-
-    // Κλήση στο backend container
-    const res = await fetch("http://ai-docs-app-backend:8000/api/ask", {
+    // Κλήση στο backend container που τρέχει το local LLM
+    const res = await fetch("http://144.91.115.48:8000/api/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),
@@ -18,14 +14,20 @@ export async function POST(req: NextRequest) {
     if (!res.ok) {
       const text = await res.text();
       console.error("Backend error:", text);
-      return NextResponse.json({ answer: "Σφάλμα από το backend." });
+      return NextResponse.json(
+        { error: "Backend request failed" },
+        { status: 500 }
+      );
     }
 
     const data = await res.json();
-    return NextResponse.json({ answer: data.answer });
+    return NextResponse.json(data);
 
   } catch (err) {
     console.error("API /ask error:", err);
-    return NextResponse.json({ answer: "Σφάλμα σύνδεσης με το server." });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500 }
+    );
   }
 }
