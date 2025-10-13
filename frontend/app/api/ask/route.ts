@@ -1,11 +1,33 @@
-// frontend/app/api/ask/route.ts
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
-  const { question } = await req.json();
+  try {
+    const { question } = await req.json();
 
-  // Προσομοίωση απάντησης
-  const answer = `You asked: "${question}"`;
+    // Κλήση στο backend API
+    const res = await fetch("http://144.91.115.48:8000/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
 
-  return NextResponse.json({ answer });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("Backend error:", text);
+      return NextResponse.json(
+        { error: "Backend request failed" },
+        { status: 500 }
+      );
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data);
+
+  } catch (err) {
+    console.error("API /ask error:", err);
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500 }
+    );
+  }
 }
