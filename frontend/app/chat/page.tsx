@@ -1,8 +1,8 @@
-"use client"; // client component για να τρέχει στο browser
+"use client";
 
 import { useState } from "react";
 
-export default function ChatPage() {
+export default function ChatClient() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<{role: string, content: string}[]>([]);
 
