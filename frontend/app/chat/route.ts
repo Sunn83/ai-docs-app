@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Προσωρινά fake απάντηση – αργότερα συνδέουμε FAISS/Ollama
 export async function POST(req: NextRequest) {
   const { message } = await req.json();
 
-  // Εδώ μπορείς να καλέσεις το backend ή το μοντέλο σου (faiss/ollama)
-  // προσωρινά κάνουμε echo για να δούμε ότι δουλεύει
+  // TODO: αντικατάστησε με κλήση σε backend/ollama/faiss
   const reply = `Απάντηση στο: "${message}"`;
 
   return NextResponse.json({ reply });
