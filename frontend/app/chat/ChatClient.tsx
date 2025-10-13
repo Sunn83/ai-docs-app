@@ -11,7 +11,6 @@ export default function ChatClient() {
 
     const userMessage = { role: "user", content: input };
     setMessages(prev => [...prev, userMessage]);
-    setInput("");
 
     try {
       const res = await fetch("/api/ask", {
@@ -19,6 +18,7 @@ export default function ChatClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: input }),
       });
+
       const data = await res.json();
 
       const botMessage = { role: "bot", content: data.answer };
@@ -30,6 +30,8 @@ export default function ChatClient() {
         { role: "bot", content: "Σφάλμα σύνδεσης με το server." },
       ]);
     }
+
+    setInput("");
   };
 
   return (
