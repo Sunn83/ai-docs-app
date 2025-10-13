@@ -14,14 +14,16 @@ export default function ChatClient() {
     setInput("");
 
     try {
-      const res = await fetch("/api/chat", {
+      // Αλλαγή endpoint στο σωστό backend
+      const res = await fetch("/api/ask", { 
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input }),
+        body: JSON.stringify({ question: input }), // σωστό πεδίο
       });
+
       const data = await res.json();
 
-      const botMessage = { role: "bot", content: data.reply };
+      const botMessage = { role: "bot", content: data.answer }; // backend επιστρέφει "answer"
       setMessages(prev => [...prev, botMessage]);
     } catch (err) {
       console.error(err);
@@ -36,7 +38,10 @@ export default function ChatClient() {
     <div className="flex flex-col h-screen p-4 bg-gray-100">
       <div className="flex-1 overflow-y-auto mb-4 border rounded p-2 bg-white shadow">
         {messages.map((m, i) => (
-          <div key={i} className={m.role === "user" ? "text-right text-blue-700" : "text-left text-gray-800"}>
+          <div
+            key={i}
+            className={m.role === "user" ? "text-right text-blue-700" : "text-left text-gray-800"}
+          >
             <strong>{m.role === "user" ? "Εσύ" : "Bot"}:</strong> {m.content}
           </div>
         ))}
