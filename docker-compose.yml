@@ -28,6 +28,8 @@ services:
       - ./data/docs:/data/docs
       - ./data/faiss.index:/data/faiss.index
       - ./data/docs_meta.json:/data/docs_meta.json
+    environment:
+      - PATH=/snap/bin:$PATH
 
   nginx:
     image: nginx:latest
