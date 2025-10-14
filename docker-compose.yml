@@ -24,6 +24,7 @@ services:
       - .env
     image: ai-docs-app-backend
     volumes:
+      - ./backend:/app          # <<< mount ολόκληρου του φακέλου backend στο /app
       - ./data/docs:/data/docs
       - ./data/faiss.index:/data/faiss.index
       - ./data/docs_meta.json:/data/docs_meta.json
