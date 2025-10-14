@@ -1,81 +1,82 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import requests
+import subprocess
+import json
 import os
 from docx import Document
 
 app = FastAPI()
 
+# Φάκελος με τα docx αρχεία
 DOCS_DIR = "/data/docs"
-OLLAMA_API_URL = "http://host.docker.internal:11434/api/generate"  # ή "http://172.17.0.1:11434/api/generate" αν δεν δουλεύει
+
+# IP του host όπου τρέχει ο Ollama
+OLLAMA_HOST = "172.17.0.1"
+OLLAMA_PORT = 11434
+OLLAMA_URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/generate"
 
 class Question(BaseModel):
     question: str
 
 def search_docs(question: str) -> str:
-    """Αναζήτηση σε όλα τα .docx έγγραφα για σχετικό κείμενο"""
+    """
+    Αναζητά την ερώτηση μέσα στα docx αρχεία και επιστρέφει τα σχετικά αποσπάσματα.
+    """
     results = []
     for file in os.listdir(DOCS_DIR):
         if file.endswith(".docx"):
+            doc_path = os.path.join(DOCS_DIR, file)
             try:
-                doc = Document(os.path.join(DOCS_DIR, file))
+                doc = Document(doc_path)
                 for para in doc.paragraphs:
                     if question.lower() in para.text.lower():
                         results.append(para.text)
             except Exception as e:
-                print(f"Σφάλμα ανάγνωσης {file}: {e}")
-    return "\n".join(results) if results else ""
+                print(f"Σφάλμα στην ανάγνωση {file}: {e}")
+    return "\n".join(results) if results else "Δεν βρέθηκαν σχετικά αποσπάσματα."
+
+@app.post("/api/ask")
+def ask_question(q: Question):
+    """
+    Δέχεται ερώτηση, αναζητά context στα docs και επιστρέφει απάντηση από το Ollama.
+    """
+    try:
+        context = search_docs(q.question)
+        if not context:
+            return {"answer": "Δεν βρέθηκαν σχετικά αποσπάσματα."}
+
+        # Δημιουργία payload για Ollama API
+        payload = {
+            "model": "mistral:latest",
+            "prompt": f"{context}\n\nΕρώτηση: {q.question}\nΑπάντησε στα ελληνικά:"
+        }
+
+        # Κλήση Ollama API μέσω curl
+        cmd = [
+            "curl",
+            "-s",
+            "-X", "POST",
+            OLLAMA_URL,
+            "-H", "Content-Type: application/json",
+            "-d", json.dumps(payload)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        # Επεξεργασία απάντησης
+        try:
+            response_json = json.loads(result.stdout)
+            answer = response_json.get("response", "").strip()
+            if not answer:
+                answer = "Δεν βρέθηκε απάντηση από το Ollama."
+        except json.JSONDecodeError:
+            answer = "Σφάλμα στην επεξεργασία της απάντησης από το Ollama."
+
+        return {"answer": answer}
+
+    except Exception as e:
+        print(f"Σφάλμα: {e}")
+        return {"answer": "Σφάλμα κατά την επεξεργασία της ερώτησης."}
 
 @app.get("/")
 def root():
     return {"message": "Backend is running"}
-
-@app.post("/api/ask")
-def ask_question(q: Question):
-    """Αποστολή ερώτησης προς το Ollama API με βάση τα δεδομένα των docx"""
-    try:
-        context = search_docs(q.question)
-        if not context:
-            return {"answer": "Δεν βρέθηκαν σχετικά αποσπάσματα στα έγγραφα."}
-
-        prompt = f"""Χρησιμοποίησε το παρακάτω περιεχόμενο για να απαντήσεις στην ερώτηση.
-Να απαντήσεις στα ελληνικά, με σαφήνεια και ακρίβεια.
-
-Πλαίσιο:
-{context}
-
-Ερώτηση: {q.question}
-Απάντηση:"""
-
-        payload = {
-            "model": "mistral:latest",
-            "prompt": prompt
-        }
-
-        response = requests.post(OLLAMA_API_URL, json=payload, stream=True, timeout=120)
-        response.raise_for_status()
-
-        # Το Ollama στέλνει απαντήσεις σε ροή JSON γραμμή-γραμμή
-        full_answer = ""
-        for line in response.iter_lines():
-            if not line:
-                continue
-            try:
-                data = line.decode("utf-8")
-                chunk = eval(data) if data.startswith("{") else None
-                if chunk and "response" in chunk:
-                    full_answer += chunk["response"]
-            except Exception:
-                continue
-
-        if not full_answer.strip():
-            full_answer = "Δεν υπήρξε απάντηση από το μοντέλο."
-
-        return {"answer": full_answer.strip()}
-
-    except requests.exceptions.RequestException as e:
-        print(f"Σφάλμα Ollama API: {e}")
-        return {"answer": "Σφάλμα επικοινωνίας με το Ollama API."}
-    except Exception as e:
-        print(f"Σφάλμα κατά την επεξεργασία: {e}")
-        return {"answer": "Σφάλμα κατά την επεξεργασία της ερώτησης."}
