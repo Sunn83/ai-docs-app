@@ -6,3 +6,4 @@ faiss-cpu
 pandas
 numpy
 python-docx
+ollama
