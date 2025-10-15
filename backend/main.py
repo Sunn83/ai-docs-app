@@ -12,7 +12,7 @@ DOCS_DIR = "/data/docs"
 
 # IP του host όπου τρέχει ο Ollama
 OLLAMA_HOST = "172.17.0.1"
-OLLAMA_PORT = 11434
+OLLAMA_PORT = 11435
 OLLAMA_URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/generate"
 
 class Question(BaseModel):
