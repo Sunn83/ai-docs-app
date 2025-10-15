@@ -1,13 +1,14 @@
 #!/bin/bash
 
-# Βρες αυτόματα το όνομα του backend container
-CONTAINER=$(docker ps --filter "name=backend" --format "{{.Names}}" | head -n 1)
+# Όνομα backend container (όπως στο docker-compose.yml)
+CONTAINER="ai-docs-app-backend"
 
-if [ -z "$CONTAINER" ]; then
-  echo "❌ Δεν βρέθηκε backend container. Βεβαιώσου ότι τρέχει με: docker compose up -d"
+# Έλεγχος αν τρέχει το container
+if [ "$(docker ps -q -f name=$CONTAINER)" == "" ]; then
+  echo "❌ Δεν βρέθηκε backend container. Τρέξε πρώτα: docker compose up -d"
   exit 1
 fi
 
-echo "📂 Τρέχει επανευρετήριο στο container: $CONTAINER"
-docker exec -it "$CONTAINER" python3 /app/index_docs.py
-echo "✅ Reindex ολοκληρώθηκε!"
+echo "📂 Δημιουργία νέου FAISS index στο container: $CONTAINER"
+docker exec -it "$CONTAINER" python3 /app/reindex.py
+echo "✅ Reindex ολοκληρώθηκε επιτυχώς!"
