@@ -1,27 +1,19 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
-import subprocess
 import json
 import os
 from docx import Document
+import requests
 
 app = FastAPI()
 
-# Φάκελος με τα docx αρχεία
 DOCS_DIR = "/data/docs"
-
-# IP του host όπου τρέχει ο Ollama
-OLLAMA_HOST = "172.17.0.1"
-OLLAMA_PORT = 11435
-OLLAMA_URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}/api/generate"
+OLLAMA_URL = "http://ollama:11434/api/generate"
 
 class Question(BaseModel):
     question: str
 
 def search_docs(question: str) -> str:
-    """
-    Αναζητά την ερώτηση μέσα στα docx αρχεία και επιστρέφει τα σχετικά αποσπάσματα.
-    """
     results = []
     for file in os.listdir(DOCS_DIR):
         if file.endswith(".docx"):
@@ -37,39 +29,25 @@ def search_docs(question: str) -> str:
 
 @app.post("/api/ask")
 def ask_question(q: Question):
-    """
-    Δέχεται ερώτηση, αναζητά context στα docs και επιστρέφει απάντηση από το Ollama.
-    """
     try:
         context = search_docs(q.question)
         if not context:
             return {"answer": "Δεν βρέθηκαν σχετικά αποσπάσματα."}
 
-        # Δημιουργία payload για Ollama API
         payload = {
             "model": "mistral:latest",
             "prompt": f"{context}\n\nΕρώτηση: {q.question}\nΑπάντησε στα ελληνικά:"
         }
 
-        # Κλήση Ollama API μέσω curl
-        cmd = [
-            "curl",
-            "-s",
-            "-X", "POST",
-            OLLAMA_URL,
-            "-H", "Content-Type: application/json",
-            "-d", json.dumps(payload)
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        # Επεξεργασία απάντησης
         try:
-            response_json = json.loads(result.stdout)
+            r = requests.post(OLLAMA_URL, json=payload, timeout=20)
+            r.raise_for_status()
+            response_json = r.json()
             answer = response_json.get("response", "").strip()
             if not answer:
                 answer = "Δεν βρέθηκε απάντηση από το Ollama."
-        except json.JSONDecodeError:
-            answer = "Σφάλμα στην επεξεργασία της απάντησης από το Ollama."
+        except Exception as e:
+            answer = f"Σφάλμα επικοινωνίας με το Ollama API: {e}"
 
         return {"answer": answer}
 
