@@ -26,16 +26,6 @@ services:
     volumes:
       - ./backend:/app
       - ./data/docs:/data/docs
-      - ./data/faiss.index:/data/faiss.index
-      - ./data/docs_meta.json:/data/docs_meta.json
-    depends_on:
-      - ollama
-
-  ollama:
-    image: ghcr.io/ollama/ollama:latest
-    container_name: ollama
-    ports:
-      - "11434:11434"
     restart: unless-stopped
 
   nginx:
