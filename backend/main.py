@@ -2,52 +2,39 @@ import os
 import json
 import faiss
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 
 app = FastAPI()
 
-# 🔧 Διαδρομές αρχείων
-INDEX_FILE = "/data/faiss.index"
-META_FILE = "/data/docs_meta.json"
+DATA_PATH = os.getenv("DATA_PATH", "./data")
+INDEX_FILE = os.path.join(DATA_PATH, "faiss.index")
+META_FILE = os.path.join(DATA_PATH, "docs_meta.json")
 
 print("🔧 Φόρτωση FAISS index και metadata...")
-
-if not os.path.exists(INDEX_FILE):
-    raise FileNotFoundError(f"Το αρχείο index δεν βρέθηκε: {INDEX_FILE}")
-if not os.path.exists(META_FILE):
-    raise FileNotFoundError(f"Το αρχείο metadata δεν βρέθηκε: {META_FILE}")
-
 index = faiss.read_index(INDEX_FILE)
 with open(META_FILE, "r", encoding="utf-8") as f:
-    metadata = json.load(f)
+    meta = json.load(f)
 
+print("🔍 Φόρτωση μοντέλου embeddings για ερωτήσεις...")
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
-class AskRequest(BaseModel):
+class Question(BaseModel):
     question: str
 
 @app.post("/api/ask")
-def ask(req: AskRequest):
-    query = req.question.strip()
-    if not query:
-        raise HTTPException(status_code=400, detail="Το ερώτημα δεν μπορεί να είναι κενό.")
-
-    print(f"❓ Ερώτηση: {query}")
-
-    query_embedding = model.encode([query])
-    D, I = index.search(np.array(query_embedding, dtype=np.float32), k=1)
-
-    best_idx = I[0][0]
-    if best_idx >= len(metadata):
-        raise HTTPException(status_code=500, detail="Μη έγκυρο αποτέλεσμα FAISS αναζήτησης.")
-
-    best_doc = metadata[best_idx]
-    response = {
-        "answer": f"Το πιο σχετικό έγγραφο είναι το: {best_doc['filename']}",
-        "document": best_doc,
-        "distance": float(D[0][0]),
-    }
-
-    return response
+def ask_question(q: Question):
+    query_embedding = model.encode([q.question], convert_to_numpy=True, normalize_embeddings=True)
+    D, I = index.search(query_embedding, k=3)  # Top 3 chunks
+    results = []
+    for score, idx in zip(D[0], I[0]):
+        chunk = meta[idx]
+        results.append({
+            "filename": chunk["filename"],
+            "text": chunk["text"],
+            "score": float(score)
+        })
+    # Συνδυασμός απάντησης
+    answer = " ".join([r["text"] for r in results[:1]])  # Πρώτο καλύτερο chunk
+    return {"answer": answer, "top_chunks": results}
