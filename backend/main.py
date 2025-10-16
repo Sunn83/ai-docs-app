@@ -5,6 +5,9 @@ import numpy as np
 from fastapi import FastAPI
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
+from api.ask import router as ask_router
+app.include_router(ask_router)
+
 
 app = FastAPI()
 
