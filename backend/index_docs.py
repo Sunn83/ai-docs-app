@@ -5,59 +5,52 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from docx import Document
 
-DOCS_PATH = "/data/docs"
-INDEX_FILE = "/data/faiss.index"
-META_FILE = "/data/docs_meta.json"
+DATA_PATH = os.getenv("DATA_PATH", "./data")
+DOCS_PATH = os.path.join(DATA_PATH, "docs")
+INDEX_FILE = os.path.join(DATA_PATH, "faiss.index")
+META_FILE = os.path.join(DATA_PATH, "docs_meta.json")
 
-def extract_text_from_docx(path):
-    """Διαβάζει το docx και επιστρέφει όλο το κείμενο σε string."""
-    doc = Document(path)
-    return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+# Chunking function
+def chunk_text(text, max_words=200):
+    words = text.split()
+    chunks = []
+    for i in range(0, len(words), max_words):
+        chunks.append(" ".join(words[i:i+max_words]))
+    return chunks
 
-def reindex_docs():
+def load_docs():
+    docs = []
+    for fname in os.listdir(DOCS_PATH):
+        if fname.endswith(".docx"):
+            path = os.path.join(DOCS_PATH, fname)
+            doc = Document(path)
+            full_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+            chunks = chunk_text(full_text)
+            for c in chunks:
+                docs.append({"filename": fname, "text": c})
+    return docs
+
+def build_index(docs):
     print("🔍 Φόρτωση μοντέλου embeddings...")
     model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
-    if not os.path.exists(DOCS_PATH):
-        print(f"❌ Ο φάκελος {DOCS_PATH} δεν υπάρχει.")
-        return
-
-    files = [f for f in os.listdir(DOCS_PATH) if f.endswith(".docx")]
-    print(f"📄 Βρέθηκαν {len(files)} αρχεία για επεξεργασία.")
-
-    if not files:
-        print("⚠️ Δεν υπάρχουν αρχεία για ευρετηρίαση.")
-        return
-
-    texts, meta = [], []
-    for filename in files:
-        full_path = os.path.join(DOCS_PATH, filename)
-        print(f"📘 Επεξεργασία: {filename}")
-        try:
-            text = extract_text_from_docx(full_path)
-            if text.strip():
-                texts.append(text)
-                meta.append({"filename": filename, "path": full_path})
-            else:
-                print(f"⚠️ Το αρχείο {filename} είναι κενό.")
-        except Exception as e:
-            print(f"❌ Σφάλμα στο {filename}: {e}")
-
-    print("🧠 Δημιουργία embeddings...")
-    embeddings = model.encode(texts, convert_to_numpy=True)
-
-    print("💾 Δημιουργία FAISS index...")
+    print("🧠 Δημιουργία embeddings για chunks...")
+    texts = [d["text"] for d in docs]
+    embeddings = model.encode(texts, show_progress_bar=True, convert_to_numpy=True, normalize_embeddings=True)
+    
     dim = embeddings.shape[1]
-    index = faiss.IndexFlatL2(dim)
+    index = faiss.IndexFlatIP(dim)  # Inner product (cosine similarity)
     index.add(embeddings)
-
     faiss.write_index(index, INDEX_FILE)
+    
+    # Save metadata
     with open(META_FILE, "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
-
-    print(f"✅ Το FAISS index αποθηκεύτηκε στο: {INDEX_FILE}")
-    print(f"✅ Τα metadata αποθηκεύτηκαν στο: {META_FILE}")
-    print("🎉 Επανευρετηρίαση ολοκληρώθηκε με επιτυχία!")
+        json.dump(docs, f, ensure_ascii=False, indent=2)
+    print(f"💾 FAISS index αποθηκεύτηκε στο: {INDEX_FILE}")
+    print(f"💾 Metadata αποθηκεύτηκαν στο: {META_FILE}")
 
 if __name__ == "__main__":
-    reindex_docs()
+    docs = load_docs()
+    print(f"📄 Βρέθηκαν {len(docs)} chunks για επεξεργασία.")
+    build_index(docs)
+    print("🎉 Indexing ολοκληρώθηκε με επιτυχία!")
