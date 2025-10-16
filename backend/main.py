@@ -12,8 +12,11 @@ DATA_PATH = os.getenv("DATA_PATH", "./data")
 INDEX_FILE = os.path.join(DATA_PATH, "faiss.index")
 META_FILE = os.path.join(DATA_PATH, "docs_meta.json")
 
-print("🔧 Φόρτωση FAISS index και metadata...")
-index = faiss.read_index(INDEX_FILE)
+if os.path.exists(INDEX_FILE):
+    index = faiss.read_index(INDEX_FILE)
+    print("FAISS index loaded!")
+else:
+    print("FAISS index not found. Start the container after running reindex.sh.")
 with open(META_FILE, "r", encoding="utf-8") as f:
     meta = json.load(f)
 
