@@ -5,7 +5,8 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from docx import Document
 
-DATA_PATH = os.getenv("DATA_PATH", "./data")
+DOCS_PATH = os.getenv("DOCS_PATH", "/data/docs")
+DATA_PATH = os.getenv("DATA_PATH", "/data")
 DOCS_PATH = os.path.join(DATA_PATH, "docs")
 INDEX_FILE = os.path.join(DATA_PATH, "faiss.index")
 META_FILE = os.path.join(DATA_PATH, "docs_meta.json")
