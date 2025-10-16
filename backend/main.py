@@ -1,50 +1,53 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from sentence_transformers import SentenceTransformer
+import os
+import json
 import faiss
 import numpy as np
-import json
-import subprocess
-import os
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from sentence_transformers import SentenceTransformer
 
 app = FastAPI()
 
-OLLAMA_URL = "http://ollama:11434/api/generate"
+# 🔧 Διαδρομές αρχείων
 INDEX_FILE = "/data/faiss.index"
 META_FILE = "/data/docs_meta.json"
 
 print("🔧 Φόρτωση FAISS index και metadata...")
+
+if not os.path.exists(INDEX_FILE):
+    raise FileNotFoundError(f"Το αρχείο index δεν βρέθηκε: {INDEX_FILE}")
+if not os.path.exists(META_FILE):
+    raise FileNotFoundError(f"Το αρχείο metadata δεν βρέθηκε: {META_FILE}")
+
 index = faiss.read_index(INDEX_FILE)
 with open(META_FILE, "r", encoding="utf-8") as f:
-    data = json.load(f)
-texts = data["texts"]
+    metadata = json.load(f)
+
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
-class Question(BaseModel):
+class AskRequest(BaseModel):
     question: str
 
 @app.post("/api/ask")
-def ask_question(q: Question):
-    question_emb = model.encode([q.question]).astype("float32")
-    D, I = index.search(question_emb, 5)  # top 5 related paragraphs
-    context = "\n".join([texts[i] for i in I[0]])
+def ask(req: AskRequest):
+    query = req.question.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Το ερώτημα δεν μπορεί να είναι κενό.")
 
-    payload = {
-        "model": "mistral:latest",
-        "prompt": f"Βασισμένος στα παρακάτω αποσπάσματα:\n{context}\n\nΕρώτηση: {q.question}\nΑπάντησε στα ελληνικά:"
+    print(f"❓ Ερώτηση: {query}")
+
+    query_embedding = model.encode([query])
+    D, I = index.search(np.array(query_embedding, dtype=np.float32), k=1)
+
+    best_idx = I[0][0]
+    if best_idx >= len(metadata):
+        raise HTTPException(status_code=500, detail="Μη έγκυρο αποτέλεσμα FAISS αναζήτησης.")
+
+    best_doc = metadata[best_idx]
+    response = {
+        "answer": f"Το πιο σχετικό έγγραφο είναι το: {best_doc['filename']}",
+        "document": best_doc,
+        "distance": float(D[0][0]),
     }
 
-    cmd = [
-        "curl", "-s", "-X", "POST", OLLAMA_URL,
-        "-H", "Content-Type: application/json",
-        "-d", json.dumps(payload)
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    try:
-        resp_json = json.loads(result.stdout)
-        answer = resp_json.get("response", "").strip()
-    except:
-        answer = "Σφάλμα στην επεξεργασία απάντησης από το Ollama."
-
-    return {"answer": answer}
+    return response
