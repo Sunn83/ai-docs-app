@@ -26,6 +26,8 @@ services:
     volumes:
       - ./backend:/app
       - ./data/docs:/data/docs
+      - ./data/faiss.index:/data/faiss.index
+      - ./data/docs_meta.json:/data/docs_meta.json
     restart: unless-stopped
 
   nginx:
