@@ -1,57 +1,78 @@
+# backend/index_docs.py
 import os
 import json
-import faiss
-import numpy as np
-from sentence_transformers import SentenceTransformer
+from pathlib import Path
 from docx import Document
+from sentence_transformers import SentenceTransformer
+import faiss
 
-DOCS_PATH = os.getenv("DOCS_PATH", "/data/docs")
-DATA_PATH = os.getenv("DATA_PATH", "/data")
-DOCS_PATH = os.path.join(DATA_PATH, "docs")
-INDEX_FILE = os.path.join(DATA_PATH, "faiss.index")
-META_FILE = os.path.join(DATA_PATH, "docs_meta.json")
+DATA_DIR = "/data"
+DOCS_PATH = os.path.join(DATA_DIR, "docs")
+INDEX_FILE = os.path.join(DATA_DIR, "faiss.index")
+META_FILE = os.path.join(DATA_DIR, "docs_meta.json")
 
-# Chunking function
-def chunk_text(text, max_words=200):
+# Παράμετροι chunking
+CHUNK_SIZE = 300  # λέξεις ανά chunk
+CHUNK_OVERLAP = 50  # επικάλυψη λέξεων
+
+def read_docx(file_path):
+    doc = Document(file_path)
+    text = "\n".join([p.text for p in doc.paragraphs if p.text.strip() != ""])
+    return text
+
+def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
     words = text.split()
     chunks = []
-    for i in range(0, len(words), max_words):
-        chunks.append(" ".join(words[i:i+max_words]))
+    i = 0
+    while i < len(words):
+        chunk = " ".join(words[i:i+chunk_size])
+        chunks.append(chunk)
+        i += chunk_size - overlap
     return chunks
 
 def load_docs():
-    docs = []
+    metadata = []
+    all_chunks = []
     for fname in os.listdir(DOCS_PATH):
-        if fname.endswith(".docx"):
-            path = os.path.join(DOCS_PATH, fname)
-            doc = Document(path)
-            full_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
-            chunks = chunk_text(full_text)
-            for c in chunks:
-                docs.append({"filename": fname, "text": c})
-    return docs
+        if not fname.lower().endswith(".docx"):
+            continue
+        path = os.path.join(DOCS_PATH, fname)
+        text = read_docx(path)
+        chunks = chunk_text(text)
+        for idx, chunk in enumerate(chunks):
+            metadata.append({
+                "filename": fname,
+                "chunk_id": idx,
+                "text": chunk
+            })
+            all_chunks.append(chunk)
+    return all_chunks, metadata
 
-def build_index(docs):
+def create_faiss_index(embeddings):
+    dim = embeddings.shape[1]
+    index = faiss.IndexFlatL2(dim)
+    index.add(embeddings)
+    return index
+
+def main():
+    print("📄 Βρέθηκαν αρχεία για επεξεργασία...")
+    chunks, metadata = load_docs()
+    print(f"Βρέθηκαν {len(chunks)} chunks για επεξεργασία.")
+
     print("🔍 Φόρτωση μοντέλου embeddings...")
     model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
-    print("🧠 Δημιουργία embeddings για chunks...")
-    texts = [d["text"] for d in docs]
-    embeddings = model.encode(texts, show_progress_bar=True, convert_to_numpy=True, normalize_embeddings=True)
-    
-    dim = embeddings.shape[1]
-    index = faiss.IndexFlatIP(dim)  # Inner product (cosine similarity)
-    index.add(embeddings)
+    print("🧠 Δημιουργία embeddings...")
+    embeddings = model.encode(chunks, convert_to_numpy=True)
+
+    print("💾 Δημιουργία FAISS index...")
+    index = create_faiss_index(embeddings)
     faiss.write_index(index, INDEX_FILE)
-    
-    # Save metadata
+
     with open(META_FILE, "w", encoding="utf-8") as f:
-        json.dump(docs, f, ensure_ascii=False, indent=2)
-    print(f"💾 FAISS index αποθηκεύτηκε στο: {INDEX_FILE}")
-    print(f"💾 Metadata αποθηκεύτηκαν στο: {META_FILE}")
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+
+    print("✅ Indexing ολοκληρώθηκε με επιτυχία!")
 
 if __name__ == "__main__":
-    docs = load_docs()
-    print(f"📄 Βρέθηκαν {len(docs)} chunks για επεξεργασία.")
-    build_index(docs)
-    print("🎉 Indexing ολοκληρώθηκε με επιτυχία!")
+    main()
