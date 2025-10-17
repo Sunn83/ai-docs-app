@@ -6,10 +6,9 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 from api.ask import router as ask_router
-app.include_router(ask_router)
-
 
 app = FastAPI()
+app.include_router(ask_router)
 
 DATA_PATH = os.getenv("DATA_PATH", "./data")
 INDEX_FILE = os.path.join(DATA_PATH, "faiss.index")
