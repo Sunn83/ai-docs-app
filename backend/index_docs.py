@@ -60,7 +60,7 @@ def main():
     print(f"Βρέθηκαν {len(chunks)} chunks για επεξεργασία.")
 
     print("🔍 Φόρτωση μοντέλου embeddings...")
-    model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    model = SentenceTransformer("thenlper/gte-large")
 
     print("🧠 Δημιουργία embeddings...")
     embeddings = model.encode(chunks, convert_to_numpy=True)
