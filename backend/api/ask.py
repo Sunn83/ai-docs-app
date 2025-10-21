@@ -35,6 +35,11 @@ def ask(query: Query):
         q_emb = model.encode([question])
         q_emb = np.array(q_emb).astype("float32")
 
+        # 🟢 DEBUG
+        print("Question:", question)
+        print("Embedding shape:", q_emb.shape)
+        print("Index ntotal:", index.ntotal)
+        
         # top 3 αποτελέσματα
         D, I = index.search(q_emb, k=3)
 
