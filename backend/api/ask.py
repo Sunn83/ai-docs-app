@@ -73,6 +73,5 @@ async def ask_question(request: Request):
         "query": question
     }
 
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
