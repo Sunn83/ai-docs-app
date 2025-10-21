@@ -1,3 +1,4 @@
+# backend/api/ask.py
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import faiss, json, os
@@ -9,22 +10,20 @@ router = APIRouter()
 INDEX_FILE = "/data/faiss.index"
 META_FILE = "/data/docs_meta.json"
 
-# Φόρτωση μοντέλου embeddings και FAISS index στη μνήμη
-model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+# Φόρτωση embedding model (με cache)
+model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
 
 if not os.path.exists(INDEX_FILE) or not os.path.exists(META_FILE):
-    raise RuntimeError("FAISS ή metadata αρχείο δεν βρέθηκαν στο /data.")
+    raise RuntimeError("❌ Δεν βρέθηκε FAISS index ή metadata.")
 
 index = faiss.read_index(INDEX_FILE)
 with open(META_FILE, "r", encoding="utf-8") as f:
     metadata = json.load(f)
 
-print("✅ FAISS και metadata φορτώθηκαν στη μνήμη.")
-
+print("✅ FAISS index και metadata φορτώθηκαν στη μνήμη.")
 
 class Query(BaseModel):
     question: str
-
 
 @router.post("/api/ask")
 def ask(query: Query):
@@ -33,14 +32,12 @@ def ask(query: Query):
         if not question:
             raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
-        # Μετατροπή της ερώτησης σε embedding
         q_emb = model.encode([question])
         q_emb = np.array(q_emb).astype("float32")
 
-        # Αναζήτηση στα FAISS embeddings (top 3)
+        # top 3 αποτελέσματα
         D, I = index.search(q_emb, k=3)
 
-        # Δημιουργία λίστας αποτελεσμάτων
         results = []
         for idx, score in zip(I[0], D[0]):
             if idx < len(metadata):
@@ -50,20 +47,18 @@ def ask(query: Query):
                     "distance": float(score)
                 })
 
-        # Πάρε το πιο σχετικό αποτέλεσμα
-        top_result = results[0] if results else None
+        if not results:
+            return {"answer": "Δεν βρέθηκε σχετική απάντηση.", "source": None, "query": question}
 
-        # Δημιούργησε μια σύντομη σύνοψη
-        summary = (
-            top_result["text"][:300] + "..."
-            if top_result and "text" in top_result
-            else "Δεν βρέθηκε σχετική απάντηση."
-        )
+        # Δημιούργησε σύνοψη από τα top 3 chunks
+        summary = " ".join([r["text"][:300] for r in results])
+        summary = summary[:700] + "..." if len(summary) > 700 else summary
 
-        # Επιστροφή απάντησης
+        top_source = results[0]["filename"]
+
         return {
             "answer": summary,
-            "source": top_result["filename"] if top_result else None,
+            "source": top_source,
             "query": question
         }
 
