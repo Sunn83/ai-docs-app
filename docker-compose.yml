@@ -26,6 +26,7 @@ services:
     volumes:
       - ./backend:/app
       - ./data:/data
+      - ./hf_cache:/root/.cache/huggingface   # ✅ cache για το model
     restart: unless-stopped
 
 
