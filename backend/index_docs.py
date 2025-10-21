@@ -11,13 +11,13 @@ DOCS_PATH = os.path.join(DATA_DIR, "docs")
 INDEX_FILE = os.path.join(DATA_DIR, "faiss.index")
 META_FILE = os.path.join(DATA_DIR, "docs_meta.json")
 
-# Παράμετροι chunking
-CHUNK_SIZE = 300  # λέξεις ανά chunk
-CHUNK_OVERLAP = 50  # επικάλυψη λέξεων
+# Ρυθμίσεις chunking
+CHUNK_SIZE = 350  # λέξεις ανά chunk
+CHUNK_OVERLAP = 50  # επικάλυψη
 
 def read_docx(file_path):
     doc = Document(file_path)
-    text = "\n".join([p.text for p in doc.paragraphs if p.text.strip() != ""])
+    text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
     return text
 
 def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
@@ -55,15 +55,15 @@ def create_faiss_index(embeddings):
     return index
 
 def main():
-    print("📄 Βρέθηκαν αρχεία για επεξεργασία...")
+    print("📄 Φόρτωση DOCX αρχείων...")
     chunks, metadata = load_docs()
-    print(f"Βρέθηκαν {len(chunks)} chunks για επεξεργασία.")
+    print(f"➡️  Βρέθηκαν {len(chunks)} chunks προς επεξεργασία.")
 
     print("🔍 Φόρτωση μοντέλου embeddings...")
-    model = SentenceTransformer("thenlper/gte-large")
+    model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
 
     print("🧠 Δημιουργία embeddings...")
-    embeddings = model.encode(chunks, convert_to_numpy=True)
+    embeddings = model.encode(chunks, convert_to_numpy=True, show_progress_bar=True)
 
     print("💾 Δημιουργία FAISS index...")
     index = create_faiss_index(embeddings)
@@ -72,7 +72,7 @@ def main():
     with open(META_FILE, "w", encoding="utf-8") as f:
         json.dump(metadata, f, ensure_ascii=False, indent=2)
 
-    print("✅ Indexing ολοκληρώθηκε με επιτυχία!")
+    print("✅ Indexing ολοκληρώθηκε επιτυχώς!")
 
 if __name__ == "__main__":
     main()
