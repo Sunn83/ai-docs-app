@@ -50,7 +50,29 @@ def ask(query: Query):
                     "distance": float(score)
                 })
 
-        return {"query": question, "results": results}
+        @app.post("/api/ask")
+async def ask_question(request: Request):
+    data = await request.json()
+    question = data.get("question", "")
+
+    # 🔹 Εδώ έχεις ήδη τον κώδικα που φέρνει τα αποτελέσματα
+    results = get_faiss_results(question)
+
+    # Πάρε το πρώτο αποτέλεσμα (π.χ. την πιο κοντινή απάντηση)
+    top_result = results[0] if results else None
+
+    summary = (
+        top_result["text"][:300] + "..."
+        if top_result and "text" in top_result
+        else "Δεν βρέθηκε απάντηση."
+    )
+
+    return {
+        "answer": summary,
+        "source": top_result["filename"] if top_result else None,
+        "query": question
+    }
+
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
