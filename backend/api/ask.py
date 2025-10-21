@@ -37,8 +37,8 @@ def ask(query: Query):
         q_emb = model.encode([question])
         q_emb = np.array(q_emb).astype("float32")
 
-        # Αναζήτηση στα FAISS embeddings
-        D, I = index.search(q_emb, k=3)  # top 3 πιο σχετικά
+        # Αναζήτηση στα FAISS embeddings (top 3)
+        D, I = index.search(q_emb, k=3)
 
         # Δημιουργία λίστας αποτελεσμάτων
         results = []
@@ -50,28 +50,22 @@ def ask(query: Query):
                     "distance": float(score)
                 })
 
-        @app.post("/api/ask")
-async def ask_question(request: Request):
-    data = await request.json()
-    question = data.get("question", "")
+        # Πάρε το πιο σχετικό αποτέλεσμα
+        top_result = results[0] if results else None
 
-    # 🔹 Εδώ έχεις ήδη τον κώδικα που φέρνει τα αποτελέσματα
-    results = get_faiss_results(question)
+        # Δημιούργησε μια σύντομη σύνοψη
+        summary = (
+            top_result["text"][:300] + "..."
+            if top_result and "text" in top_result
+            else "Δεν βρέθηκε σχετική απάντηση."
+        )
 
-    # Πάρε το πρώτο αποτέλεσμα (π.χ. την πιο κοντινή απάντηση)
-    top_result = results[0] if results else None
-
-    summary = (
-        top_result["text"][:300] + "..."
-        if top_result and "text" in top_result
-        else "Δεν βρέθηκε απάντηση."
-    )
-
-    return {
-        "answer": summary,
-        "source": top_result["filename"] if top_result else None,
-        "query": question
-    }
+        # Επιστροφή απάντησης
+        return {
+            "answer": summary,
+            "source": top_result["filename"] if top_result else None,
+            "query": question
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
