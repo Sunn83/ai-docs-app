@@ -5,6 +5,7 @@ from pathlib import Path
 from docx import Document
 from sentence_transformers import SentenceTransformer
 import faiss
+import re
 
 DATA_DIR = "/data"
 DOCS_PATH = os.path.join(DATA_DIR, "docs")
@@ -20,14 +21,32 @@ def read_docx(file_path):
     text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
     return text
 
-def chunk_text(text, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP):
-    words = text.split()
+def chunk_text(text, chunk_size=300, overlap=50):
+    # Σπάσε σε προτάσεις (με βάση . ? !)
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
     chunks = []
-    i = 0
-    while i < len(words):
-        chunk = " ".join(words[i:i+chunk_size])
-        chunks.append(chunk)
-        i += chunk_size - overlap
+    current_chunk = []
+    current_len = 0
+
+    for sent in sentences:
+        words = sent.split()
+        sent_len = len(words)
+
+        # Αν προσθέσουμε την πρόταση και ξεπερνάμε το όριο chunk_size -> κόψε εδώ
+        if current_len + sent_len > chunk_size:
+            chunks.append(" ".join(current_chunk))
+            # Κρατάμε overlap (τελευταίες προτάσεις από το προηγούμενο chunk)
+            overlap_words = " ".join(" ".join(current_chunk).split()[-overlap:])
+            current_chunk = [overlap_words, sent]
+            current_len = sent_len + overlap
+        else:
+            current_chunk.append(sent)
+            current_len += sent_len
+
+    # Πρόσθεσε το τελευταίο chunk
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+
     return chunks
 
 def load_docs():
