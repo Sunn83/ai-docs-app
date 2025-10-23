@@ -23,6 +23,8 @@ print("✅ FAISS index και metadata φορτώθηκαν στη μνήμη.")
 class Query(BaseModel):
     question: str
 
+import re
+
 @router.post("/api/ask")
 def ask(query: Query):
     try:
@@ -30,61 +32,93 @@ def ask(query: Query):
         if not question:
             raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
-        # encode + normalize
         q_emb = model.encode([question], convert_to_numpy=True)
         q_emb = q_emb.astype('float32')
         faiss.normalize_L2(q_emb)
 
-        # πάρε top-k
         k = 7
         D, I = index.search(q_emb, k)
 
-        # build results — πρόσεξε: metadata είναι list με ίδια σειρά που φτιάχτηκε ο index
         results = []
         for idx, score in zip(I[0], D[0]):
             if idx < len(metadata):
+                md = metadata[idx]
                 results.append({
                     "idx": int(idx),
                     "score": float(score),
-                    "filename": metadata[idx]["filename"],
-                    "chunk_id": metadata[idx].get("chunk_id"),
-                    "text": metadata[idx]["text"]
+                    "filename": md["filename"],
+                    "section_title": md.get("section_title"),
+                    "section_idx": md.get("section_idx"),
+                    "chunk_id": md.get("chunk_id"),
+                    "text": md.get("text")
                 })
 
         if not results:
             return {"answer": "Δεν βρέθηκε σχετική απάντηση.", "source": None, "query": question}
 
-        # Συγχώνευση γειτονικών chunks από το ίδιο αρχείο (π.χ. chunk_id συνεχόμενα)
-        merged = []
+        # sort by score desc
+        results = sorted(results, key=lambda x: x["score"], reverse=True)
+
+        # Merge chunks that come from same file & same section (ordered by chunk_id)
+        merged_by_section = {}
         for r in results:
-            if not merged:
-                merged.append(r)
-                continue
-            prev = merged[-1]
-            # αν ίδιο αρχείο και συνεχόμενο chunk_id -> συγχώνευσε
-            if r["filename"] == prev["filename"] and prev.get("chunk_id") is not None and r.get("chunk_id") is not None and r["chunk_id"] == prev["chunk_id"] + 1:
-                prev["text"] = prev["text"].rstrip() + " " + r["text"].lstrip()
-                prev["score"] = max(prev["score"], r["score"])
-            else:
-                merged.append(r)
+            key = (r["filename"], r.get("section_idx"))
+            if key not in merged_by_section:
+                merged_by_section[key] = {"chunks": [], "scores": []}
+            merged_by_section[key]["chunks"].append((r["chunk_id"], r["text"]))
+            merged_by_section[key]["scores"].append(r["score"])
 
-        top = merged[0]
-        # Επέκτεινε απάντηση στα top 1-2 merged results ώστε να δώσεις πλήρες context
-        answer_text = top["text"]
-        if len(merged) > 1 and merged[1]["filename"] == top["filename"]:
-            answer_text = answer_text + "\n\n" + merged[1]["text"]
+        # For each section, sort chunks by chunk_id and join
+        merged_list = []
+        for (fname, sidx), val in merged_by_section.items():
+            sorted_chunks = [t for _, t in sorted(val["chunks"], key=lambda x: (x[0] if x[0] is not None else 0))]
+            joined = "\n\n".join(sorted_chunks)
+            avg_score = float(sum(val["scores"]) / len(val["scores"]))
+            merged_list.append({
+                "filename": fname,
+                "section_idx": sidx,
+                "text": joined,
+                "score": avg_score
+            })
 
-        # Καθάρισμα & trim (π.χ. αν είναι πολύ μεγάλο)
-        answer_text = " ".join(answer_text.split())
-        MAX_CHARS = 3000
+        # pick best merged section by score
+        merged_list = sorted(merged_list, key=lambda x: x["score"], reverse=True)
+        best = merged_list[0]
+
+        # CLEANUP: remove duplicate heading repetitions like "2.4 ...\n2.4 ...", collapse repeated lines
+        def clean_text(t):
+            # 1) collapse multiple identical consecutive lines
+            t = re.sub(r'(?m)^(?P<L>.+)\n(?P=L)(\n(?P=L))*', r'\g<L>', t)
+            # 2) remove multiple occurrences of same heading repeated inside small window
+            t = re.sub(r'(?s)(^.{0,200}?)(\n\1)+', r'\1', t)
+            # 3) normalize spaces and newlines
+            t = re.sub(r'\n{3,}', '\n\n', t)
+            t = " ".join(t.split())
+            return t
+
+        answer_text = clean_text(best["text"])
+
+        # Optionally, if you want the answer to be a single paragraph starting after the heading:
+        # If section_title exists, remove a leading repeated title from answer_text
+        if merged_list and merged_list[0].get("section_idx") is not None:
+            title = None
+            # find the metadata section title if present
+            for md in metadata:
+                if md["filename"] == best["filename"] and md.get("section_idx") == best["section_idx"]:
+                    title = md.get("section_title")
+                    break
+            if title and answer_text.startswith(title):
+                answer_text = answer_text[len(title):].lstrip(': ').lstrip()
+
+        MAX_CHARS = 4000
         if len(answer_text) > MAX_CHARS:
-            answer_text = answer_text[:MAX_CHARS] + " ..."
+            answer_text = answer_text[:MAX_CHARS].rsplit(' ', 1)[0] + " ..."
 
         return {
             "answer": answer_text,
-            "source": top["filename"],
+            "source": best["filename"],
             "query": question,
-            "matches": merged[:5]
+            "matches": merged_list[:5]   # για debug στο frontend
         }
 
     except Exception as e:
