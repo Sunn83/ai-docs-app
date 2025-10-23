@@ -18,8 +18,32 @@ CHUNK_OVERLAP = 50  # επικάλυψη
 
 def read_docx(file_path):
     doc = Document(file_path)
-    text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
-    return text
+    parts = []
+    current_heading = None
+
+    for p in doc.paragraphs:
+        text = p.text.strip()
+        if not text:
+            continue
+
+        style_name = ""
+        try:
+            style_name = getattr(p.style, "name", "") or ""
+        except Exception:
+            pass
+
+        # Ελέγχουμε αν είναι επικεφαλίδα (αγγλικά ή ελληνικά)
+        if "heading" in style_name.lower() or "επικεφαλίδα" in style_name.lower():
+            current_heading = text
+            continue
+
+        # Αν έχουμε heading, προσθέτουμε το περιεχόμενο με prefix
+        if current_heading:
+            parts.append(f"{current_heading}: {text}")
+        else:
+            parts.append(text)
+
+    return "\n".join(parts)
 
 def chunk_text(text, chunk_size=300, overlap=50):
     # Σπάσε σε προτάσεις (με βάση . ? !)
