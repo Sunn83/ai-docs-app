@@ -55,15 +55,26 @@ def ask(query: Query):
         if not results:
             return {"answer": "Δεν βρέθηκε σχετική απάντηση.", "source": None, "query": question}
 
-        # Δημιούργησε σύνοψη από τα top 3 chunks
-        summary = " ".join([r["text"][:300] for r in results])
-        summary = summary[:700] + "..." if len(summary) > 700 else summary
+                # Πάρε το πιο σχετικό chunk (πρώτο αποτέλεσμα)
+        top_result = results[0]
+        answer_text = top_result["text"].strip()
 
-        top_source = results[0]["filename"]
+        # Αν υπάρχει επόμενο chunk στο ίδιο αρχείο, ένωσέ το (π.χ. συνέχεια της παραγράφου)
+        idx = top_result.get("chunk_id", None)
+        filename = top_result["filename"]
+
+        if idx is not None:
+            # Βρες το επόμενο chunk αν υπάρχει
+            next_chunk = next(
+                (m["text"] for m in metadata if m["filename"] == filename and m["chunk_id"] == idx + 1),
+                None
+            )
+            if next_chunk:
+                answer_text += "\n" + next_chunk.strip()
 
         return {
-            "answer": summary,
-            "source": top_source,
+            "answer": answer_text,
+            "source": filename,
             "query": question
         }
 
