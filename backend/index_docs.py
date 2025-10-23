@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from docx import Document
 from sentence_transformers import SentenceTransformer
+import numpy as np
 import faiss
 import re
 
@@ -100,8 +101,10 @@ def load_docs():
     return all_chunks, metadata
 
 def create_faiss_index(embeddings):
+    # normalize για cosine similarity
+    faiss.normalize_L2(embeddings)
     dim = embeddings.shape[1]
-    index = faiss.IndexFlatL2(dim)
+    index = faiss.IndexFlatIP(dim)   # inner product (cosine if normalized)
     index.add(embeddings)
     return index
 
@@ -116,7 +119,10 @@ def main():
     print("🧠 Δημιουργία embeddings...")
     embeddings = model.encode(chunks, convert_to_numpy=True, show_progress_bar=True)
 
-    print("💾 Δημιουργία FAISS index...")
+    # convert to float32 if όχι ήδη
+    embeddings = embeddings.astype('float32')
+
+    print("🔧 Κανονικοποίηση embeddings (L2) + δημιουργία FAISS index...")
     index = create_faiss_index(embeddings)
     faiss.write_index(index, INDEX_FILE)
 
@@ -124,6 +130,7 @@ def main():
         json.dump(metadata, f, ensure_ascii=False, indent=2)
 
     print("✅ Indexing ολοκληρώθηκε επιτυχώς!")
+
 
 if __name__ == "__main__":
     main()
