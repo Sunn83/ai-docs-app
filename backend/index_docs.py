@@ -45,45 +45,49 @@ def read_docx(file_path):
 
     return "\n".join(parts)
 
-import re
+def split_by_headings(text):
+    """
+    Σπάει το docx σε ενότητες με βάση επικεφαλίδες τύπου '2.4 ...' ή 'Άρθρο ...'
+    """
+    # Κανονική έκφραση που εντοπίζει επικεφαλίδες (π.χ. 2.4, 3.1, Άρθρο 5, Θέμα)
+    pattern = re.compile(r'(?=\n?\s*(?:\d+\.\d+|Άρθρο\s+\d+|Θέμα|Ενότητα)\b)', re.IGNORECASE)
+    parts = pattern.split(text)
+    return [p.strip() for p in parts if len(p.strip()) > 50]  # αγνόησε πολύ μικρά
 
 def chunk_text(text, chunk_size=350, overlap=50):
     """
-    Σπάει το κείμενο σε chunks ~350 λέξεων χωρίς να κόβει προτάσεις.
-    Διατηρεί overlap (επικάλυψη) μεταξύ των chunks για καλύτερα embeddings.
+    Δημιουργεί chunks ~350 λέξεων μέσα σε κάθε ενότητα (όχι σε όλο το κείμενο).
     """
-    # Καθαρισμός περιττών newlines / πολλαπλών κενών
-    text = re.sub(r'\s+', ' ', text.strip())
+    sections = split_by_headings(text)
+    all_chunks = []
 
-    # Σπάσιμο σε προτάσεις (λαμβάνει υπόψη ελληνικά σημεία στίξης)
-    sentences = re.split(r'(?<=[.!;?])\s+', text)
-    sentences = [s.strip() for s in sentences if s.strip()]
+    for sec in sections:
+        sentences = re.split(r'(?<=[.!;?])\s+', sec)
+        sentences = [s.strip() for s in sentences if s.strip()]
 
-    chunks = []
-    current_chunk = []
-    current_len = 0
+        chunks = []
+        current_chunk = []
+        current_len = 0
 
-    for sent in sentences:
-        words = sent.split()
-        sent_len = len(words)
+        for sent in sentences:
+            words = sent.split()
+            sent_len = len(words)
 
-        if current_len + sent_len > chunk_size:
-            # Δημιούργησε νέο chunk
+            if current_len + sent_len > chunk_size:
+                chunks.append(" ".join(current_chunk))
+                overlap_text = " ".join(" ".join(current_chunk).split()[-overlap:])
+                current_chunk = [overlap_text, sent]
+                current_len = len(overlap_text.split()) + sent_len
+            else:
+                current_chunk.append(sent)
+                current_len += sent_len
+
+        if current_chunk:
             chunks.append(" ".join(current_chunk))
 
-            # Κράτα overlap (τελευταίες λέξεις από το προηγούμενο)
-            overlap_text = " ".join(" ".join(current_chunk).split()[-overlap:])
-            current_chunk = [overlap_text, sent]
-            current_len = len(overlap_text.split()) + sent_len
-        else:
-            current_chunk.append(sent)
-            current_len += sent_len
+        all_chunks.extend(chunks)
 
-    # Τελευταίο chunk
-    if current_chunk:
-        chunks.append(" ".join(current_chunk))
-
-    return chunks
+    return all_chunks
 
 def load_docs():
     metadata = []
