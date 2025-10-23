@@ -32,7 +32,7 @@ def ask(query: Query):
         if not question:
             raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
-        q_emb = model.encode(question, convert_to_numpy=True)
+        q_emb = model.encode([question], convert_to_numpy=True)
         q_emb = q_emb.astype('float32')
         faiss.normalize_L2(q_emb)
 
