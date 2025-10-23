@@ -17,34 +17,136 @@ META_FILE = os.path.join(DATA_DIR, "docs_meta.json")
 CHUNK_SIZE = 350  # λέξεις ανά chunk
 CHUNK_OVERLAP = 50  # επικάλυψη
 
-def read_docx(file_path):
+# --- section-aware reading & chunking (βάλε στο backend/index_docs.py) ---
+from docx import Document
+import re
+
+def read_docx_sections(file_path):
+    """
+    Επιστρέφει λίστα sections: κάθε section = {"title": title_or_none, "text": full_text}
+    Προσπαθεί να χρησιμοποιήσει paragraph styles (Heading...), αλλιώς αν δεν υπάρχουν,
+    ανιχνεύει γραμμές που τερματίζουν σε ':' ή είναι σύντομες ως τίτλους.
+    """
     doc = Document(file_path)
-    parts = []
-    current_heading = None
+    sections = []
+    current_title = None
+    current_body = []
+
+    def flush_section():
+        if current_title is None and not current_body:
+            return
+        text = "\n".join([t for t in current_body if t.strip()])
+        sections.append({
+            "title": current_title.strip() if current_title else None,
+            "text": text.strip()
+        })
 
     for p in doc.paragraphs:
-        text = p.text.strip()
-        if not text:
+        txt = p.text.strip()
+        if not txt:
+            # blank line -> skip but keep in body
             continue
 
-        style_name = ""
-        try:
-            style_name = getattr(p.style, "name", "") or ""
-        except Exception:
-            pass
-
-        # Ελέγχουμε αν είναι επικεφαλίδα (αγγλικά ή ελληνικά)
-        if "heading" in style_name.lower() or "επικεφαλίδα" in style_name.lower():
-            current_heading = text
+        # case 1: style indicates heading (Heading 1/2/3) — συνήθως "Heading 1" κλπ
+        style_name = getattr(p.style, "name", "") or ""
+        if style_name.lower().startswith("heading") or style_name.lower().startswith("επικεφαλίδα"):
+            # new section
+            if current_title is not None or current_body:
+                flush_section()
+            current_title = txt
+            current_body = []
             continue
 
-        # Αν έχουμε heading, προσθέτουμε το περιεχόμενο με prefix
-        if current_heading:
-            parts.append(f"{current_heading}: {text}")
+        # case 2: fallback heading detection (short line or endswith ':')
+        if (len(txt.split()) <= 8 and txt.endswith(":")) or (len(txt) <= 60 and len(txt.split()) <= 5 and txt.endswith(":")):
+            # treat as title
+            if current_title is not None or current_body:
+                flush_section()
+            current_title = txt
+            current_body = []
+            continue
+
+        # else: normal paragraph -> append to body
+        current_body.append(txt)
+
+    # flush last
+    if current_title is not None or current_body:
+        flush_section()
+
+    # If file has NO headings at all, create 1 section with whole text
+    if not sections:
+        # fallback: join paragraphs into single section
+        doc_text = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
+        sections = [{"title": None, "text": doc_text}]
+
+    return sections
+
+def chunk_section_text(section_text, max_words=400, overlap_words=60):
+    """
+    Με βάση λέξεις - σπάει τη section σε chunks, κρατώντας sentences ακέραιες.
+    Επιστρέφει λίστα chunk strings.
+    """
+    if not section_text:
+        return []
+
+    # split σε προτάσεις (βασικά με ., ?, ! αλλά διατηρούμε ελληνικά)
+    sentences = re.split(r'(?<=[\.\!\?])\s+', section_text.strip())
+    chunks = []
+    cur = []
+    cur_count = 0
+
+    for s in sentences:
+        words = s.split()
+        wcount = len(words)
+        if cur_count + wcount > max_words and cur:
+            chunks.append(" ".join(cur).strip())
+            # overlap: keep last overlap_words words from cur
+            tail = " ".join(" ".join(cur).split()[-overlap_words:])
+            cur = [tail, s]
+            cur_count = len(tail.split()) + wcount
         else:
-            parts.append(text)
+            cur.append(s)
+            cur_count += wcount
 
-    return "\n".join(parts)
+    if cur:
+        chunks.append(" ".join(cur).strip())
+
+    # dedupe empty and very short
+    chunks = [c for c in chunks if len(c.split()) > 5]
+    return chunks
+
+def load_docs():
+    """
+    Επιστρέφει: chunks_list, metadata_list (ordered lists)
+    metadata entries: {"filename": fname, "section_title": title, "section_idx": i_section, "chunk_id": j_chunk}
+    """
+    metadata = []
+    all_chunks = []
+    for fname in os.listdir(DOCS_PATH):
+        if not fname.lower().endswith(".docx"):
+            continue
+        path = os.path.join(DOCS_PATH, fname)
+        sections = read_docx_sections(path)
+        for si, sec in enumerate(sections):
+            sec_title = sec.get("title")
+            sec_text = sec.get("text") or ""
+            # split section to chunks
+            chunks = chunk_section_text(sec_text, max_words=CHUNK_SIZE, overlap_words=CHUNK_OVERLAP)
+            if not chunks:
+                # if section was too small, keep whole section text
+                if sec_text.strip():
+                    chunks = [sec_text.strip()]
+            for cj, chunk in enumerate(chunks):
+                metadata.append({
+                    "filename": fname,
+                    "section_title": sec_title,
+                    "section_idx": si,
+                    "chunk_id": cj,
+                    "text": chunk
+                })
+                all_chunks.append(chunk)
+    return all_chunks, metadata
+
 
 def split_by_headings(text):
     """
@@ -54,51 +156,6 @@ def split_by_headings(text):
     pattern = re.compile(r'(?=\n?\s*(?:\d+\.\d+|Άρθρο\s+\d+|Θέμα|Ενότητα)\b)', re.IGNORECASE)
     parts = pattern.split(text)
     return [p.strip() for p in parts if len(p.strip()) > 50]  # αγνόησε πολύ μικρά
-
-import re
-
-def chunk_text(text):
-    """
-    Σπάει το έγγραφο σε ενότητες με βάση τους τίτλους τύπου:
-    '1.', '2.1', '2.4 Διοικητική κύρωση ...' κ.λπ.
-    Κάθε ενότητα περιλαμβάνει τον τίτλο + το περιεχόμενο μέχρι τον επόμενο τίτλο.
-    """
-    # regex: τίτλοι τύπου "1.", "2.3", "3.1.4", "2.4 Διοικητική κύρωση ..."
-    pattern = r"(?=(?:\n|^)(\d+(?:\.\d+)*\s+[^:\n]+:))"
-
-    sections = re.split(pattern, text)
-    chunks = []
-
-    # Αν δεν υπάρχουν matches, επέστρεψε όλο το κείμενο σαν ένα chunk
-    if len(sections) <= 1:
-        return [text]
-
-    # Κάθε δύο στοιχεία του split = [τίτλος, περιεχόμενο]
-    for i in range(1, len(sections), 2):
-        title = sections[i].strip()
-        content = sections[i + 1].strip() if i + 1 < len(sections) else ""
-        full_chunk = f"{title}\n{content}"
-        chunks.append(full_chunk.strip())
-
-    return chunks
-
-def load_docs():
-    metadata = []
-    all_chunks = []
-    for fname in os.listdir(DOCS_PATH):
-        if not fname.lower().endswith(".docx"):
-            continue
-        path = os.path.join(DOCS_PATH, fname)
-        text = read_docx(path)
-        chunks = chunk_text(text)
-        for idx, chunk in enumerate(chunks):
-            metadata.append({
-                "filename": fname,
-                "chunk_id": idx,
-                "text": chunk
-            })
-            all_chunks.append(chunk)
-    return all_chunks, metadata
 
 def create_faiss_index(embeddings):
     # normalize για cosine similarity
