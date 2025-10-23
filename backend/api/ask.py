@@ -1,4 +1,4 @@
-# backend/api/ask.py
+# api/ask.py — ουσιαστικό μέρος
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import faiss, json, os
@@ -6,11 +6,9 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 router = APIRouter()
-
 INDEX_FILE = "/data/faiss.index"
 META_FILE = "/data/docs_meta.json"
 
-# Φόρτωση embedding model (με cache)
 model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
 
 if not os.path.exists(INDEX_FILE) or not os.path.exists(META_FILE):
@@ -32,50 +30,61 @@ def ask(query: Query):
         if not question:
             raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
-        q_emb = model.encode([question])
-        q_emb = np.array(q_emb).astype("float32")
+        # encode + normalize
+        q_emb = model.encode([question], convert_to_numpy=True)
+        q_emb = q_emb.astype('float32')
+        faiss.normalize_L2(q_emb)
 
-        # 🟢 DEBUG
-        print("Question:", question)
-        print("Embedding shape:", q_emb.shape)
-        print("Index ntotal:", index.ntotal)
-        
-        # top 3 αποτελέσματα
-        D, I = index.search(q_emb, k=3)
+        # πάρε top-k
+        k = 7
+        D, I = index.search(q_emb, k)
 
+        # build results — πρόσεξε: metadata είναι list με ίδια σειρά που φτιάχτηκε ο index
         results = []
         for idx, score in zip(I[0], D[0]):
             if idx < len(metadata):
                 results.append({
+                    "idx": int(idx),
+                    "score": float(score),
                     "filename": metadata[idx]["filename"],
-                    "text": metadata[idx]["text"],
-                    "distance": float(score)
+                    "chunk_id": metadata[idx].get("chunk_id"),
+                    "text": metadata[idx]["text"]
                 })
 
         if not results:
             return {"answer": "Δεν βρέθηκε σχετική απάντηση.", "source": None, "query": question}
 
-                # Πάρε το πιο σχετικό chunk (πρώτο αποτέλεσμα)
-        top_result = results[0]
-        answer_text = top_result["text"].strip()
+        # Συγχώνευση γειτονικών chunks από το ίδιο αρχείο (π.χ. chunk_id συνεχόμενα)
+        merged = []
+        for r in results:
+            if not merged:
+                merged.append(r)
+                continue
+            prev = merged[-1]
+            # αν ίδιο αρχείο και συνεχόμενο chunk_id -> συγχώνευσε
+            if r["filename"] == prev["filename"] and prev.get("chunk_id") is not None and r.get("chunk_id") is not None and r["chunk_id"] == prev["chunk_id"] + 1:
+                prev["text"] = prev["text"].rstrip() + " " + r["text"].lstrip()
+                prev["score"] = max(prev["score"], r["score"])
+            else:
+                merged.append(r)
 
-        # Αν υπάρχει επόμενο chunk στο ίδιο αρχείο, ένωσέ το (π.χ. συνέχεια της παραγράφου)
-        idx = top_result.get("chunk_id", None)
-        filename = top_result["filename"]
+        top = merged[0]
+        # Επέκτεινε απάντηση στα top 1-2 merged results ώστε να δώσεις πλήρες context
+        answer_text = top["text"]
+        if len(merged) > 1 and merged[1]["filename"] == top["filename"]:
+            answer_text = answer_text + "\n\n" + merged[1]["text"]
 
-        if idx is not None:
-            # Βρες το επόμενο chunk αν υπάρχει
-            next_chunk = next(
-                (m["text"] for m in metadata if m["filename"] == filename and m["chunk_id"] == idx + 1),
-                None
-            )
-            if next_chunk:
-                answer_text += "\n" + next_chunk.strip()
+        # Καθάρισμα & trim (π.χ. αν είναι πολύ μεγάλο)
+        answer_text = " ".join(answer_text.split())
+        MAX_CHARS = 3000
+        if len(answer_text) > MAX_CHARS:
+            answer_text = answer_text[:MAX_CHARS] + " ..."
 
         return {
             "answer": answer_text,
-            "source": filename,
-            "query": question
+            "source": top["filename"],
+            "query": question,
+            "matches": merged[:5]
         }
 
     except Exception as e:
