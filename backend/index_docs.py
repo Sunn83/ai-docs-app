@@ -45,9 +45,20 @@ def read_docx(file_path):
 
     return "\n".join(parts)
 
-def chunk_text(text, chunk_size=300, overlap=50):
-    # Σπάσε σε προτάσεις (με βάση . ? !)
-    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+import re
+
+def chunk_text(text, chunk_size=350, overlap=50):
+    """
+    Σπάει το κείμενο σε chunks ~350 λέξεων χωρίς να κόβει προτάσεις.
+    Διατηρεί overlap (επικάλυψη) μεταξύ των chunks για καλύτερα embeddings.
+    """
+    # Καθαρισμός περιττών newlines / πολλαπλών κενών
+    text = re.sub(r'\s+', ' ', text.strip())
+
+    # Σπάσιμο σε προτάσεις (λαμβάνει υπόψη ελληνικά σημεία στίξης)
+    sentences = re.split(r'(?<=[.!;?])\s+', text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+
     chunks = []
     current_chunk = []
     current_len = 0
@@ -56,18 +67,19 @@ def chunk_text(text, chunk_size=300, overlap=50):
         words = sent.split()
         sent_len = len(words)
 
-        # Αν προσθέσουμε την πρόταση και ξεπερνάμε το όριο chunk_size -> κόψε εδώ
         if current_len + sent_len > chunk_size:
+            # Δημιούργησε νέο chunk
             chunks.append(" ".join(current_chunk))
-            # Κρατάμε overlap (τελευταίες προτάσεις από το προηγούμενο chunk)
-            overlap_words = " ".join(" ".join(current_chunk).split()[-overlap:])
-            current_chunk = [overlap_words, sent]
-            current_len = sent_len + overlap
+
+            # Κράτα overlap (τελευταίες λέξεις από το προηγούμενο)
+            overlap_text = " ".join(" ".join(current_chunk).split()[-overlap:])
+            current_chunk = [overlap_text, sent]
+            current_len = len(overlap_text.split()) + sent_len
         else:
             current_chunk.append(sent)
             current_len += sent_len
 
-    # Πρόσθεσε το τελευταίο chunk
+    # Τελευταίο chunk
     if current_chunk:
         chunks.append(" ".join(current_chunk))
 
