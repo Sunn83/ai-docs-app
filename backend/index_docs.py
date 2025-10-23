@@ -54,40 +54,32 @@ def split_by_headings(text):
     parts = pattern.split(text)
     return [p.strip() for p in parts if len(p.strip()) > 50]  # αγνόησε πολύ μικρά
 
-def chunk_text(text, chunk_size=350, overlap=50):
+import re
+
+def chunk_text(text):
     """
-    Δημιουργεί chunks ~350 λέξεων μέσα σε κάθε ενότητα (όχι σε όλο το κείμενο).
+    Σπάει το έγγραφο σε ενότητες με βάση τους τίτλους τύπου:
+    '1.', '2.1', '2.4 Διοικητική κύρωση ...' κ.λπ.
+    Κάθε ενότητα περιλαμβάνει τον τίτλο + το περιεχόμενο μέχρι τον επόμενο τίτλο.
     """
-    sections = split_by_headings(text)
-    all_chunks = []
+    # regex: τίτλοι τύπου "1.", "2.3", "3.1.4", "2.4 Διοικητική κύρωση ..."
+    pattern = r"(?=(?:\n|^)(\d+(?:\.\d+)*\s+[^:\n]+:))"
 
-    for sec in sections:
-        sentences = re.split(r'(?<=[.!;?])\s+', sec)
-        sentences = [s.strip() for s in sentences if s.strip()]
+    sections = re.split(pattern, text)
+    chunks = []
 
-        chunks = []
-        current_chunk = []
-        current_len = 0
+    # Αν δεν υπάρχουν matches, επέστρεψε όλο το κείμενο σαν ένα chunk
+    if len(sections) <= 1:
+        return [text]
 
-        for sent in sentences:
-            words = sent.split()
-            sent_len = len(words)
+    # Κάθε δύο στοιχεία του split = [τίτλος, περιεχόμενο]
+    for i in range(1, len(sections), 2):
+        title = sections[i].strip()
+        content = sections[i + 1].strip() if i + 1 < len(sections) else ""
+        full_chunk = f"{title}\n{content}"
+        chunks.append(full_chunk.strip())
 
-            if current_len + sent_len > chunk_size:
-                chunks.append(" ".join(current_chunk))
-                overlap_text = " ".join(" ".join(current_chunk).split()[-overlap:])
-                current_chunk = [overlap_text, sent]
-                current_len = len(overlap_text.split()) + sent_len
-            else:
-                current_chunk.append(sent)
-                current_len += sent_len
-
-        if current_chunk:
-            chunks.append(" ".join(current_chunk))
-
-        all_chunks.extend(chunks)
-
-    return all_chunks
+    return chunks
 
 def load_docs():
     metadata = []
