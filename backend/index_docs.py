@@ -174,7 +174,11 @@ def main():
     model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
 
     print("🧠 Δημιουργία embeddings...")
-    embeddings = model.encode(chunks, convert_to_numpy=True, show_progress_bar=True)
+    embeddings = model.encode(
+    [f"passage: {c}" for c in chunks],
+    convert_to_numpy=True,
+    show_progress_bar=True
+    )
 
     # convert to float32 if όχι ήδη
     embeddings = embeddings.astype('float32')
