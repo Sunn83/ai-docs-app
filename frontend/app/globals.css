@@ -58,3 +58,8 @@ input:focus, textarea:focus {
 .message.bot {
   @apply bg-gray-100 self-start;
 }
+
+html {
+  scroll-behavior: smooth;
+}
+
