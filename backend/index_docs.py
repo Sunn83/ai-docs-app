@@ -23,9 +23,11 @@ import re
 
 def read_docx_sections(file_path):
     """
-    Επιστρέφει λίστα sections: κάθε section = {"title": title_or_none, "text": full_text}
-    Προσπαθεί να χρησιμοποιήσει paragraph styles (Heading...), αλλιώς αν δεν υπάρχουν,
-    ανιχνεύει γραμμές που τερματίζουν σε ':' ή είναι σύντομες ως τίτλους.
+    Διαβάζει DOCX και επιστρέφει sections:
+    {"title": τίτλος ή None, "text": καθαρό κείμενο + πίνακες}
+
+    ➤ Υποστηρίζει ελληνικές επικεφαλίδες ("Επικεφαλίδα", "Άρθρο", "Θέμα" κ.λπ.)
+    ➤ Περιλαμβάνει και πίνακες (tables)
     """
     doc = Document(file_path)
     sections = []
@@ -33,51 +35,58 @@ def read_docx_sections(file_path):
     current_body = []
 
     def flush_section():
-        if current_title is None and not current_body:
+        if not current_title and not current_body:
             return
-        text = "\n".join([t for t in current_body if t.strip()])
+        text = "\n".join([t.strip() for t in current_body if t.strip()])
         sections.append({
             "title": current_title.strip() if current_title else None,
             "text": text.strip()
         })
 
-    for p in doc.paragraphs:
-        txt = p.text.strip()
-        if not txt:
-            # blank line -> skip but keep in body
-            continue
+    for element in doc.element.body:
+        # Paragraph
+        if element.tag.endswith("p"):
+            p = element
+            paragraph = doc.paragraphs[len(sections) + len(current_body)] if len(doc.paragraphs) > len(sections) + len(current_body) else None
+            if not paragraph:
+                continue
+            txt = paragraph.text.strip()
+            if not txt:
+                continue
 
-        # case 1: style indicates heading (Heading 1/2/3) — συνήθως "Heading 1" κλπ
-        style_name = getattr(p.style, "name", "") or ""
-        if style_name.lower().startswith("heading") or style_name.lower().startswith("επικεφαλίδα"):
-            # new section
-            if current_title is not None or current_body:
+            style_name = getattr(paragraph.style, "name", "").lower()
+            if style_name.startswith("heading") or "επικεφαλίδα" in style_name:
                 flush_section()
-            current_title = txt
-            current_body = []
-            continue
+                current_title = txt
+                current_body = []
+                continue
 
-        # case 2: fallback heading detection (short line or endswith ':')
-        if (len(txt.split()) <= 8 and txt.endswith(":")) or (len(txt) <= 60 and len(txt.split()) <= 5 and txt.endswith(":")):
-            # treat as title
-            if current_title is not None or current_body:
+            # Fallback τίτλοι (π.χ. "2.4 ...", "Άρθρο 5:", "Θέμα:")
+            if re.match(r"^\s*(\d+(\.\d+)+|άρθρο\s+\d+|θέμα|ενότητα)", txt.lower()):
                 flush_section()
-            current_title = txt
-            current_body = []
-            continue
+                current_title = txt
+                current_body = []
+                continue
 
-        # else: normal paragraph -> append to body
-        current_body.append(txt)
+            current_body.append(txt)
 
-    # flush last
-    if current_title is not None or current_body:
-        flush_section()
+        # Table
+        elif element.tag.endswith("tbl"):
+            table = doc.tables[len([e for e in doc.element.body if e.tag.endswith('tbl')]) - len(sections)]
+            rows_text = []
+            for row in table.rows:
+                cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
+                rows_text.append(" | ".join(cells))
+            table_text = "\n".join(rows_text)
+            current_body.append(table_text)
 
-    # If file has NO headings at all, create 1 section with whole text
+    # flush τελευταίο section
+    flush_section()
+
+    # Αν δεν βρέθηκε τίποτα, βάλε ολόκληρο το doc σαν ένα section
     if not sections:
-        # fallback: join paragraphs into single section
-        doc_text = "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
-        sections = [{"title": None, "text": doc_text}]
+        all_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+        sections = [{"title": None, "text": all_text}]
 
     return sections
 
