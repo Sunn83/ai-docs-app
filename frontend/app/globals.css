@@ -8,7 +8,7 @@ body {
   height: 100%;
   margin: 0;
   padding: 0;
-  background-color: #f9fafb;
+  @apply bg-red-100;
   color: #111827;
   font-family: 'Inter', sans-serif;
 }
