@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 
 export default function ChatClient() {
   const [messages, setMessages] = useState<{ role: "user" | "assistant" | "ASTbooks"; content: string }[]>([]);
@@ -86,7 +89,9 @@ setMessages((prev) => [...prev, botMessage]);
                 <strong className="block mb-1 text-sm opacity-70">
                   {m.role === "user" ? "Εσύ" : "ASTbooks"}
                 </strong>
-                {m.content}
+                <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm max-w-none">
+                  {m.content}
+                </ReactMarkdown>
               </div>
             </div>
           ))}
