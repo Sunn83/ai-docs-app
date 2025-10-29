@@ -16,7 +16,10 @@ export default function ChatClient() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const userMessage = { role: "user", content: input };
+    const userMessage: { role: "user" | "assistant" | "ASTbooks"; content: string } = { 
+  role: "user", 
+  content: input 
+  };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setLoading(true);
