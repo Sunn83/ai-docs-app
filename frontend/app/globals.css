@@ -63,3 +63,18 @@ html {
   scroll-behavior: smooth;
 }
 
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+.prose th, .prose td {
+  border: 1px solid #ddd;
+  padding: 0.5rem;
+  text-align: left;
+}
+.prose th {
+  background-color: #f3f4f6;
+  font-weight: 600;
+}
+
