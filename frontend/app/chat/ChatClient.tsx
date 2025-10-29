@@ -53,7 +53,10 @@ setMessages((prev) => [...prev, botMessage]);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") sendMessage();
+    if (e.key === "Enter" && !loading) {
+      e.preventDefault();
+      sendMessage();
+    }
   };
 
   return (
