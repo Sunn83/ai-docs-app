@@ -32,10 +32,13 @@ export default function ChatClient() {
       });
 
       const data = await response.json();
-      const botMessage = {
+      const botMessage: { role: "user" | "assistant" | "ASTbooks"; content: string } = {
         role: "assistant",
         content: data.answer || "⚠️ Δεν βρέθηκε απάντηση.",
       };
+
+setMessages((prev) => [...prev, botMessage]);
+
 
       setMessages((prev) => [...prev, botMessage]);
     } catch (error) {
