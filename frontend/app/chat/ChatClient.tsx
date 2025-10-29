@@ -3,9 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 
 export default function ChatClient() {
-  const [messages, setMessages] = useState<
-    { role: "user" | "assistant"; content: string }[]
-  >([]);
+  const [messages, setMessages] = useState<{ role: "user" | "assistant" | "ASTbooks"; content: string }[]>([]);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
