@@ -18,8 +18,6 @@ CHUNK_SIZE = 350  # λέξεις ανά chunk
 CHUNK_OVERLAP = 50  # επικάλυψη
 
 # --- section-aware reading & chunking (βάλε στο backend/index_docs.py) ---
-from docx import Document
-import re
 
 def read_docx_sections(file_path):
     """
@@ -74,16 +72,18 @@ def read_docx_sections(file_path):
         elif element.tag.endswith("tbl"):
             table = doc.tables[len([e for e in doc.element.body if e.tag.endswith('tbl')]) - len(sections)]
             rows_text = []
-            rows_text = []
             for row in table.rows:
-                cells = [cell.text.strip().replace("\n", " ") or " " for cell in row.cells]
-                rows_text.append("| " + " | ".join(cells) + " |")
-            # Προσθήκη header separator (αν έχει τουλάχιστον 2 γραμμές)
-            if len(rows_text) > 1:
-                separator = "| " + " | ".join(["---"] * len(table.rows[0].cells)) + " |"
-                rows_text.insert(1, separator)
-            table_text = "\n".join(rows_text)
-            current_body.append(f"\n\n📊 Πίνακας:\n\n{table_text}\n\n")
+                cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
+                rows_text.append(" | ".join(cells))
+
+            # Αν υπάρχει header row, πρόσθεσε γραμμή διαχωρισμού --- για markdown πίνακα
+            if rows_text:
+                header = rows_text[0]
+                cols = header.count("|") + 1
+                separator = " | ".join(["---"] * cols)
+                table_text = "\n".join(["", header, separator] + rows_text[1:] + [""])
+                table_text = "📊 Πίνακας:\n" + table_text
+                current_body.append(table_text)
 
     # flush τελευταίο section
     flush_section()
