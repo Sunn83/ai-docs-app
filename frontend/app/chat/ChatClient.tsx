@@ -89,28 +89,29 @@ setMessages((prev) => [...prev, botMessage]);
                 <strong className="block mb-1 text-sm opacity-70">
                   {m.role === "user" ? "Εσύ" : "ASTbooks"}
                 </strong>
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      table: ({ node, ...props }) => (
-                        <div className="overflow-x-auto my-4">
-                          <table className="table-auto border-collapse border border-gray-400 w-full text-sm" {...props} />
-                        </div>
-                      ),
-                      th: ({ node, ...props }) => (
-                        <th className="border border-gray-400 bg-gray-100 px-2 py-1 text-left" {...props} />
-                      ),
-                      td: ({ node, ...props }) => (
-                        <td className="border border-gray-400 px-2 py-1 align-top" {...props} />
-                      ),
-                  }}
-                  className="prose prose-sm max-w-none break-words whitespace-pre-wrap"
-                >
-                  {m.content}
-                </ReactMarkdown>
+                  <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        table: ({ node, ...props }) => (
+                          <div className="overflow-x-auto my-4">
+                            <table className="table-auto border-collapse border border-gray-400 w-full text-sm" {...props} />
+                          </div>
+                        ),
+                        th: ({ node, ...props }) => (
+                          <th className="border border-gray-400 bg-gray-100 px-2 py-1 text-left" {...props} />
+                        ),
+                        td: ({ node, ...props }) => (
+                          <td className="border border-gray-400 px-2 py-1 align-top" {...props} />
+                        ),
+                    }}
+                  >
+                    {m.content}
+                  </ReactMarkdown>
                 </div>
               </div>
             </div>
+          </div>
           ))}
 
           {loading && (
