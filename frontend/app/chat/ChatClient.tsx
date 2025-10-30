@@ -90,7 +90,10 @@ setMessages((prev) => [...prev, botMessage]);
                   {m.role === "user" ? "Εσύ" : "ASTbooks"}
                 </strong>
                 <div className="prose prose-sm max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    className="prose prose-sm max-w-none break-words whitespace-pre-wrap"
+                    >
                     {m.content}
                   </ReactMarkdown>
                 </div>
