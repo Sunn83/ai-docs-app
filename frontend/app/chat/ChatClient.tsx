@@ -5,14 +5,11 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 export default function ChatClient() {
-  const [messages, setMessages] = useState<
-    { role: "user" | "assistant" | "ASTbooks"; content: string }[]
-  >([]);
+  const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [input, setInput] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
-  // Scroll to bottom on new message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -20,30 +17,28 @@ export default function ChatClient() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const userMessage = { role: "user" as const, content: input };
+    const userMessage = { role: "user", content: input };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setLoading(true);
 
     try {
-      const response = await fetch("/api/ask", {
+      const res = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: input }),
       });
 
-      const data = await response.json();
+      const data = await res.json();
       const botMessage = {
-        role: "assistant" as const,
+        role: "assistant",
         content: data.answer || "⚠️ Δεν βρέθηκε απάντηση.",
       };
-
       setMessages((prev) => [...prev, botMessage]);
-    } catch (error) {
-      console.error("Error:", error);
+    } catch (err) {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant" as const, content: "⚠️ Σφάλμα κατά τη λήψη απάντησης." },
+        { role: "assistant", content: "⚠️ Σφάλμα κατά τη λήψη απάντησης." },
       ]);
     } finally {
       setLoading(false);
@@ -51,31 +46,21 @@ export default function ChatClient() {
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !loading) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === "Enter" && !loading) sendMessage();
   };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6">
       <div className="w-full max-w-2xl bg-white shadow-lg rounded-2xl flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-500 text-white p-4 font-semibold text-lg flex items-center justify-center">
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-500 text-white p-4 font-semibold text-lg text-center">
           💼 ASTbooks — Έξυπνος Βοηθός
         </div>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {messages.map((m, i) => (
-            <div
-              key={i}
-              className={`flex ${
-                m.role === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
+            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[80%] p-3 rounded-2xl shadow-sm whitespace-pre-line ${
+                className={`max-w-[80%] p-3 rounded-2xl shadow-sm ${
                   m.role === "user"
                     ? "bg-blue-100 text-blue-900 rounded-br-none"
                     : "bg-gray-100 text-gray-800 rounded-bl-none"
@@ -84,32 +69,31 @@ export default function ChatClient() {
                 <strong className="block mb-1 text-sm opacity-70">
                   {m.role === "user" ? "Εσύ" : "ASTbooks"}
                 </strong>
-                <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      table: ({ node, ...props }) => (
-                        <div className="overflow-x-auto my-4">
-                          <table
-                            className="table-auto border-collapse border border-gray-400 w-full text-sm"
-                            {...props}
-                          />
-                        </div>
-                      ),
-                      th: ({ node, ...props }) => (
-                        <th
-                          className="border border-gray-400 bg-gray-100 px-2 py-1 text-left"
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  className="prose prose-sm max-w-none break-words whitespace-pre-wrap"
+                  components={{
+                    table: ({ ...props }) => (
+                      <div className="overflow-x-auto my-4">
+                        <table
+                          className="table-auto border-collapse border border-gray-400 w-full text-sm"
                           {...props}
                         />
-                      ),
-                      td: ({ node, ...props }) => (
-                        <td className="border border-gray-400 px-2 py-1 align-top" {...props} />
-                      ),
-                    }}
-                  >
-                    {m.content}
-                  </ReactMarkdown>
-                </div>
+                      </div>
+                    ),
+                    th: ({ ...props }) => (
+                      <th
+                        className="border border-gray-400 bg-gray-100 px-2 py-1 text-left"
+                        {...props}
+                      />
+                    ),
+                    td: ({ ...props }) => (
+                      <td className="border border-gray-400 px-2 py-1 align-top" {...props} />
+                    ),
+                  }}
+                >
+                  {m.content}
+                </ReactMarkdown>
               </div>
             </div>
           ))}
@@ -125,7 +109,6 @@ export default function ChatClient() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
         <div className="border-t border-gray-200 p-4 flex items-center bg-gray-50">
           <input
             type="text"
