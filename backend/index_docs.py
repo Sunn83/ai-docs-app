@@ -84,9 +84,8 @@ def read_docx_sections(file_path):
                 table_text = "\n".join(["", header, separator] + rows_text[1:] + [""])
                 table_text = "📊 Πίνακας:\n" + table_text
                 print("\n\n📘 --- TABLE DEBUG ---")
-print(table_text)
-print("----------------------\n\n")
-
+                print(table_text)
+                print("----------------------\n\n")
                 current_body.append(table_text)
 
     # flush τελευταίο section
