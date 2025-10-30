@@ -67,7 +67,7 @@ setMessages((prev) => [...prev, botMessage]);
       <div className="w-full max-w-2xl bg-white shadow-lg rounded-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-500 text-white p-4 font-semibold text-lg flex items-center justify-center">
-          💼 ASTbooks — Έξυπνος Βοηθός ΓΕΜΗ
+          💼 ASTbooks — Έξυπνος Βοηθός
         </div>
 
         {/* Messages */}
