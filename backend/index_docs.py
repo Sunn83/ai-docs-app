@@ -82,8 +82,8 @@ def read_docx_sections(file_path):
             if len(rows_text) > 1:
                 separator = "| " + " | ".join(["---"] * len(table.rows[0].cells)) + " |"
                 rows_text.insert(1, separator)
-            table_text = "\n".join(rows_text) + "\n\n"
-            current_body.append(f"\n\n📊 Πίνακας:\n{table_text}\n")
+            table_text = "\n".join(rows_text)
+            current_body.append(f"\n\n📊 Πίνακας:\n\n{table_text}\n\n")
 
     # flush τελευταίο section
     flush_section()
