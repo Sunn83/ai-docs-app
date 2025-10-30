@@ -4,9 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-
 export default function ChatClient() {
-  const [messages, setMessages] = useState<{ role: "user" | "assistant" | "ASTbooks"; content: string }[]>([]);
+  const [messages, setMessages] = useState<
+    { role: "user" | "assistant" | "ASTbooks"; content: string }[]
+  >([]);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
@@ -19,10 +20,7 @@ export default function ChatClient() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const userMessage: { role: "user" | "assistant" | "ASTbooks"; content: string } = { 
-  role: "user", 
-  content: input 
-  };
+    const userMessage = { role: "user" as const, content: input };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setLoading(true);
@@ -35,20 +33,17 @@ export default function ChatClient() {
       });
 
       const data = await response.json();
-      const botMessage: { role: "user" | "assistant" | "ASTbooks"; content: string } = {
-        role: "assistant",
+      const botMessage = {
+        role: "assistant" as const,
         content: data.answer || "⚠️ Δεν βρέθηκε απάντηση.",
       };
-
-setMessages((prev) => [...prev, botMessage]);
-
 
       setMessages((prev) => [...prev, botMessage]);
     } catch (error) {
       console.error("Error:", error);
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "⚠️ Σφάλμα κατά τη λήψη απάντησης." },
+        { role: "assistant" as const, content: "⚠️ Σφάλμα κατά τη λήψη απάντησης." },
       ]);
     } finally {
       setLoading(false);
@@ -89,21 +84,27 @@ setMessages((prev) => [...prev, botMessage]);
                 <strong className="block mb-1 text-sm opacity-70">
                   {m.role === "user" ? "Εσύ" : "ASTbooks"}
                 </strong>
-                  <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        table: ({ node, ...props }) => (
-                          <div className="overflow-x-auto my-4">
-                            <table className="table-auto border-collapse border border-gray-400 w-full text-sm" {...props} />
-                          </div>
-                        ),
-                        th: ({ node, ...props }) => (
-                          <th className="border border-gray-400 bg-gray-100 px-2 py-1 text-left" {...props} />
-                        ),
-                        td: ({ node, ...props }) => (
-                          <td className="border border-gray-400 px-2 py-1 align-top" {...props} />
-                        ),
+                <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      table: ({ node, ...props }) => (
+                        <div className="overflow-x-auto my-4">
+                          <table
+                            className="table-auto border-collapse border border-gray-400 w-full text-sm"
+                            {...props}
+                          />
+                        </div>
+                      ),
+                      th: ({ node, ...props }) => (
+                        <th
+                          className="border border-gray-400 bg-gray-100 px-2 py-1 text-left"
+                          {...props}
+                        />
+                      ),
+                      td: ({ node, ...props }) => (
+                        <td className="border border-gray-400 px-2 py-1 align-top" {...props} />
+                      ),
                     }}
                   >
                     {m.content}
@@ -111,7 +112,6 @@ setMessages((prev) => [...prev, botMessage]);
                 </div>
               </div>
             </div>
-          </div>
           ))}
 
           {loading && (
