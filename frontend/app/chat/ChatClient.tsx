@@ -4,8 +4,14 @@ import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+// 💬 Ορισμός τύπου μηνύματος
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export default function ChatClient() {
-  const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -17,7 +23,8 @@ export default function ChatClient() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const userMessage = { role: "user", content: input };
+    // ✅ Ορίζουμε ρητά τύπο Message
+    const userMessage: Message = { role: "user", content: input };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setLoading(true);
@@ -30,16 +37,17 @@ export default function ChatClient() {
       });
 
       const data = await res.json();
-      const botMessage = {
+      const botMessage: Message = {
         role: "assistant",
         content: data.answer || "⚠️ Δεν βρέθηκε απάντηση.",
       };
       setMessages((prev) => [...prev, botMessage]);
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "⚠️ Σφάλμα κατά τη λήψη απάντησης." },
-      ]);
+      const errorMsg: Message = {
+        role: "assistant",
+        content: "⚠️ Σφάλμα κατά τη λήψη απάντησης.",
+      };
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setLoading(false);
     }
