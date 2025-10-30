@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-// 💬 Ορισμός τύπου μηνύματος
 type Message = {
   role: "user" | "assistant";
   content: string;
@@ -23,7 +22,6 @@ export default function ChatClient() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    // ✅ Ορίζουμε ρητά τύπο Message
     const userMessage: Message = { role: "user", content: input };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
@@ -77,31 +75,34 @@ export default function ChatClient() {
                 <strong className="block mb-1 text-sm opacity-70">
                   {m.role === "user" ? "Εσύ" : "ASTbooks"}
                 </strong>
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  className="prose prose-sm max-w-none break-words whitespace-pre-wrap"
-                  components={{
-                    table: ({ ...props }) => (
-                      <div className="overflow-x-auto my-4">
-                        <table
-                          className="table-auto border-collapse border border-gray-400 w-full text-sm"
+
+                {/* ✅ Εδώ η διορθωμένη δομή */}
+                <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      table: ({ ...props }) => (
+                        <div className="overflow-x-auto my-4">
+                          <table
+                            className="table-auto border-collapse border border-gray-400 w-full text-sm"
+                            {...props}
+                          />
+                        </div>
+                      ),
+                      th: ({ ...props }) => (
+                        <th
+                          className="border border-gray-400 bg-gray-100 px-2 py-1 text-left"
                           {...props}
                         />
-                      </div>
-                    ),
-                    th: ({ ...props }) => (
-                      <th
-                        className="border border-gray-400 bg-gray-100 px-2 py-1 text-left"
-                        {...props}
-                      />
-                    ),
-                    td: ({ ...props }) => (
-                      <td className="border border-gray-400 px-2 py-1 align-top" {...props} />
-                    ),
-                  }}
-                >
-                  {m.content}
-                </ReactMarkdown>
+                      ),
+                      td: ({ ...props }) => (
+                        <td className="border border-gray-400 px-2 py-1 align-top" {...props} />
+                      ),
+                    }}
+                  >
+                    {m.content}
+                  </ReactMarkdown>
+                </div>
               </div>
             </div>
           ))}
