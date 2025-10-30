@@ -66,15 +66,18 @@ html {
 .prose table {
   width: 100%;
   border-collapse: collapse;
-  margin: 1rem 0;
+  margin: 1em 0;
 }
-.prose th, .prose td {
+
+.prose th,
+.prose td {
   border: 1px solid #ddd;
-  padding: 0.5rem;
-  text-align: left;
+  padding: 0.5em;
 }
+
 .prose th {
   background-color: #f3f4f6;
   font-weight: 600;
+  text-align: left;
 }
 
