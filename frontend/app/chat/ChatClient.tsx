@@ -165,15 +165,13 @@ export default function ChatClient() {
         {/* 🔍 TEST: Markdown table rendering */}
         <div className="p-4 bg-gray-50 rounded-lg my-4">
           <h2 className="font-bold text-gray-700 mb-2">Test Markdown Table</h2>
-          <div className="prose prose-sm max-w-none">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {`| Εταιρεία | Τύπος | Πλήθος |
+          <ReactMarkdown remarkPlugins={[remarkGfm]} className="prose prose-sm max-w-none">
+            {`| Εταιρεία | Τύπος | Πλήθος |
         | --- | --- | --- |
         | ΟΕ | Προσωπική | 100 |
         | ΕΠΕ | Κεφαλαιουχική | 200 |
         | ΙΚΕ | Ιδιωτική | 300 |`}
-            </ReactMarkdown>
-          </div>
+          </ReactMarkdown>
         </div>
       </div>
     </div>
