@@ -17,35 +17,34 @@ CHUNK_SIZE = 350
 CHUNK_OVERLAP = 50
 
 
-# ✅ Μετατροπή πίνακα σε markdown με καθαρό format
+# ✅ Καθαρή μετατροπή πίνακα DOCX σε Markdown πίνακα για ReactMarkdown
 def table_to_markdown(table):
-    """Ασφαλής μετατροπή πίνακα DOCX σε Markdown για ReactMarkdown."""
+    """Μετατρέπει DOCX πίνακα σε markdown format με σωστή στοίχιση για ReactMarkdown."""
     rows_text = []
     for row in table.rows:
         cells = []
         for cell in row.cells:
-            text = cell.text.strip()
-            text = text.replace("\u00A0", " ").replace("\r", "").replace("\n", " ")
+            # Καθαρισμός κειμένου κελιού
+            text = cell.text.strip().replace("\u00A0", " ").replace("\r", " ").replace("\n", " ")
             cells.append(text)
-        rows_text.append(" | ".join(cells))
+        rows_text.append(cells)
 
     if not rows_text:
         return ""
 
-    num_cols = rows_text[0].count("|") + 1
-    separator = " | ".join(["---"] * num_cols)
+    # Δημιουργία markdown
+    header = rows_text[0]
+    separators = ["---"] * len(header)
+    markdown_lines = [
+        "| " + " | ".join(header) + " |",
+        "| " + " | ".join(separators) + " |"
+    ]
+    for row in rows_text[1:]:
+        markdown_lines.append("| " + " | ".join(row) + " |")
 
-    markdown_table = "\n".join([
-        "",
-        "📊 Πίνακας:",
-        rows_text[0],
-        separator,
-        *rows_text[1:],
-        ""
-    ])
+    markdown_table = "\n".join(markdown_lines)
 
     return markdown_table
-
 
 def read_docx_sections(filepath):
     """Διαβάζει DOCX και επιστρέφει λίστα ενοτήτων με πίνακες και τίτλους."""
