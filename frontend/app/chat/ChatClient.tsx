@@ -35,11 +35,25 @@ export default function ChatClient() {
       });
 
       const data = await res.json();
+
+      console.log("API response:", data); // 🔹 Δες τι γυρίζει το backend στο browser console
+
       const botMessage: Message = {
         role: "assistant",
         content: data.answer || "⚠️ Δεν βρέθηκε απάντηση.",
       };
-      setMessages((prev) => [...prev, botMessage]);
+
+      // 🔹 Debug mode — δείξε τα matches ως collapsible JSON block
+      if (data.matches && data.matches.length > 0) {
+        const debugMsg: Message = {
+          role: "assistant",
+          content: "DEBUG_MATCHES:\n" + JSON.stringify(data.matches, null, 2),
+        };
+        setMessages((prev) => [...prev, botMessage, debugMsg]);
+      } else {
+        setMessages((prev) => [...prev, botMessage]);
+      }
+
     } catch (err) {
       const errorMsg: Message = {
         role: "assistant",
