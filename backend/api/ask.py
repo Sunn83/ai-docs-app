@@ -4,6 +4,8 @@ from pydantic import BaseModel
 import faiss, json, os, traceback, re
 import numpy as np
 from sentence_transformers import SentenceTransformer
+import json
+import os
 
 router = APIRouter()
 
@@ -113,6 +115,27 @@ def ask(query: Query):
         if len(answer_text) > MAX_CHARS:
             answer_text = answer_text[:MAX_CHARS].rsplit(' ', 1)[0] + " ..."
 
+        # --- DEBUG LOGGING ---
+        debug_path = "/data/last_query_debug.json"
+        try:
+            debug_data = {
+                "query": question,
+                "matches": [
+                    {
+                        "filename": m["filename"],
+                        "section_idx": m.get("section_idx"),
+                        "score": m.get("score"),
+                        "text_preview": m["text"][:500]
+                    }
+                for m in merged_list[:10]
+            ],
+            "final_answer": answer_text
+        }
+        with open(debug_path, "w") as f:
+            json.dump(debug_data, f, ensure_ascii=False, indent=2)
+        print(f"🪶 Αποθηκεύτηκε debug log: {debug_path}")
+    except Exception as e:
+        print(f"⚠️ Σφάλμα κατά το debug save: {e}")
         return {
             "answer": answer_text,
             "source": best["filename"],
