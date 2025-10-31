@@ -96,7 +96,7 @@ def read_docx_sections(filepath):
                 if table_md.strip():
                     # όταν διαβάζεις table_text:
                     print("📘 --- TABLE DEBUG ---")
-                    print(table_text)
+                    print(table_md)
                     print("\n----------------------\n")
                     current_body.append(table_md)
 
