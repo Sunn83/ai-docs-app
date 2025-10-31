@@ -17,32 +17,50 @@ CHUNK_SIZE = 350
 CHUNK_OVERLAP = 50
 
 
-# ✅ Καθαρή μετατροπή πίνακα DOCX σε Markdown πίνακα για ReactMarkdown
-def table_to_markdown(table):
-    """Μετατρέπει DOCX πίνακα σε markdown format με σωστή στοίχιση για ReactMarkdown."""
+# ✅ Μετατροπή πίνακα σε Markdown με wrap μεγάλων κελιών για ReactMarkdown
+def table_to_markdown(table, wrap_length=80):
+    """
+    Μετατρέπει έναν DOCX πίνακα σε Markdown, σπάζοντας μεγάλα κελιά για ReactMarkdown.
+    wrap_length: μέγιστος αριθμός χαρακτήρων ανά γραμμή κελιού
+    """
+    def wrap_text(text, max_length=wrap_length):
+        words = text.split()
+        lines = []
+        current = ""
+        for word in words:
+            if len(current) + len(word) + 1 > max_length:
+                lines.append(current)
+                current = word
+            else:
+                current += (" " if current else "") + word
+        if current:
+            lines.append(current)
+        return "<br>".join(lines)  # ReactMarkdown καταλαβαίνει <br> για newline
+
     rows_text = []
     for row in table.rows:
         cells = []
         for cell in row.cells:
-            # Καθαρισμός κειμένου κελιού
-            text = cell.text.strip().replace("\u00A0", " ").replace("\r", " ").replace("\n", " ")
+            text = cell.text.strip()
+            text = text.replace("\u00A0", " ").replace("\r", "").replace("\n", " ")
+            text = wrap_text(text)
             cells.append(text)
-        rows_text.append(cells)
+        rows_text.append(" | ".join(cells))
 
     if not rows_text:
         return ""
 
-    # Δημιουργία markdown
-    header = rows_text[0]
-    separators = ["---"] * len(header)
-    markdown_lines = [
-        "| " + " | ".join(header) + " |",
-        "| " + " | ".join(separators) + " |"
-    ]
-    for row in rows_text[1:]:
-        markdown_lines.append("| " + " | ".join(row) + " |")
+    num_cols = rows_text[0].count("|") + 1
+    separator = " | ".join(["---"] * num_cols)
 
-    markdown_table = "\n".join(markdown_lines)
+    markdown_table = "\n".join([
+        "",
+        "📊 Πίνακας:",
+        rows_text[0],
+        separator,
+        *rows_text[1:],
+        ""
+    ])
 
     return markdown_table
 
