@@ -148,10 +148,10 @@ export default function ChatClient() {
             <div className="prose prose-sm max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {`| Εταιρεία | Τύπος | Πλήθος |
-          | --- | --- | --- |
-          | ΟΕ | Προσωπική | 100 |
-          | ΕΠΕ | Κεφαλαιουχική | 200 |
-          | ΙΚΕ | Ιδιωτική | 300 |`}
+                | --- | --- | --- |
+                | ΟΕ | Προσωπική | 100 |
+                | ΕΠΕ | Κεφαλαιουχική | 200 |
+                | ΙΚΕ | Ιδιωτική | 300 |`}
             </ReactMarkdown>
           </div>
         </div>
