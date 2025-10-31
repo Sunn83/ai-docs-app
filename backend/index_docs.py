@@ -94,6 +94,10 @@ def read_docx_sections(filepath):
             if table:
                 table_md = table_to_markdown(table)
                 if table_md.strip():
+                    # όταν διαβάζεις table_text:
+                    print("📘 --- TABLE DEBUG ---")
+                    print(table_text)
+                    print("\n----------------------\n")
                     current_body.append(table_md)
 
     flush_section()
@@ -172,6 +176,13 @@ def main():
 
     print("🔍 Φόρτωση μοντέλου embeddings...")
     model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
+
+    print("\n==== SAMPLE METADATA (πρώτα 10) ====")
+    for i, m in enumerate(metadata[:10]):
+        print(f"[{i}] file={m['filename']} section_idx={m['section_idx']} chunk_id={m['chunk_id']}")
+        print("TEXT PREVIEW:", m['text'][:200].replace("\n", " "))
+        print("---")
+    print("Σύνολο chunks:", len(metadata))
 
     print("🧠 Δημιουργία embeddings...")
     embeddings = model.encode(
