@@ -4,17 +4,15 @@ import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-type Message = {
-  role: "user" | "assistant";
-  content: string;
-};
-
 export default function ChatClient() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<
+    { role: "user" | "assistant" | "ASTbooks"; content: string }[]
+  >([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const [loading, setLoading] = useState(false);
 
+  // Scroll to bottom on new message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -22,65 +20,62 @@ export default function ChatClient() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const userMessage: Message = { role: "user", content: input };
+    const userMessage = { role: "user" as const, content: input };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setLoading(true);
 
     try {
-      const res = await fetch("/api/ask", {
+      const response = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: input }),
       });
 
-      const data = await res.json();
-
-      console.log("API response:", data); // 🔹 Δες τι γυρίζει το backend στο browser console
-
-      const botMessage: Message = {
-        role: "assistant",
+      const data = await response.json();
+      const botMessage = {
+        role: "assistant" as const,
         content: data.answer || "⚠️ Δεν βρέθηκε απάντηση.",
       };
 
-      // 🔹 Debug mode — δείξε τα matches ως collapsible JSON block
-      if (data.matches && data.matches.length > 0) {
-        const debugMsg: Message = {
-          role: "assistant",
-          content: "DEBUG_MATCHES:\n" + JSON.stringify(data.matches, null, 2),
-        };
-        setMessages((prev) => [...prev, botMessage, debugMsg]);
-      } else {
-        setMessages((prev) => [...prev, botMessage]);
-      }
-
-    } catch (err) {
-      const errorMsg: Message = {
-        role: "assistant",
-        content: "⚠️ Σφάλμα κατά τη λήψη απάντησης.",
-      };
-      setMessages((prev) => [...prev, errorMsg]);
+      setMessages((prev) => [...prev, botMessage]);
+    } catch (error) {
+      console.error("Error:", error);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant" as const, content: "⚠️ Σφάλμα κατά τη λήψη απάντησης." },
+      ]);
     } finally {
       setLoading(false);
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !loading) sendMessage();
+    if (e.key === "Enter" && !loading) {
+      e.preventDefault();
+      sendMessage();
+    }
   };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6">
       <div className="w-full max-w-2xl bg-white shadow-lg rounded-2xl flex flex-col overflow-hidden">
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-500 text-white p-4 font-semibold text-lg text-center">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-500 text-white p-4 font-semibold text-lg flex items-center justify-center">
           💼 ASTbooks — Έξυπνος Βοηθός
         </div>
 
+        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div
+              key={i}
+              className={`flex ${
+                m.role === "user" ? "justify-end" : "justify-start"
+              }`}
+            >
               <div
-                className={`max-w-[80%] p-3 rounded-2xl shadow-sm ${
+                className={`max-w-[80%] p-3 rounded-2xl shadow-sm whitespace-pre-line ${
                   m.role === "user"
                     ? "bg-blue-100 text-blue-900 rounded-br-none"
                     : "bg-gray-100 text-gray-800 rounded-bl-none"
@@ -89,13 +84,11 @@ export default function ChatClient() {
                 <strong className="block mb-1 text-sm opacity-70">
                   {m.role === "user" ? "Εσύ" : "ASTbooks"}
                 </strong>
-
-                {/* ✅ Εδώ η διορθωμένη δομή */}
                 <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
-                      table: ({ ...props }) => (
+                      table: ({ node, ...props }) => (
                         <div className="overflow-x-auto my-4">
                           <table
                             className="table-auto border-collapse border border-gray-400 w-full text-sm"
@@ -103,13 +96,13 @@ export default function ChatClient() {
                           />
                         </div>
                       ),
-                      th: ({ ...props }) => (
+                      th: ({ node, ...props }) => (
                         <th
                           className="border border-gray-400 bg-gray-100 px-2 py-1 text-left"
                           {...props}
                         />
                       ),
-                      td: ({ ...props }) => (
+                      td: ({ node, ...props }) => (
                         <td className="border border-gray-400 px-2 py-1 align-top" {...props} />
                       ),
                     }}
@@ -132,21 +125,7 @@ export default function ChatClient() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* 🔍 TEST: Markdown table rendering */}
-        <div className="p-4 bg-gray-50 rounded-lg my-4">
-          <h2 className="font-bold text-gray-700 mb-2">Test Markdown Table</h2>
-          <div className="prose prose-sm max-w-none">
-            console.log("Markdown content:", m.content);
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {`| Εταιρεία | Τύπος | Πλήθος |
-              | --- | --- | --- |
-              | ΟΕ | Προσωπική | 100 |
-              | ΕΠΕ | Κεφαλαιουχική | 200 |
-              | ΙΚΕ | Ιδιωτική | 300 |`}
-            </ReactMarkdown>
-          </div>
-        </div>
-        
+        {/* Input */}
         <div className="border-t border-gray-200 p-4 flex items-center bg-gray-50">
           <input
             type="text"
