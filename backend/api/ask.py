@@ -127,15 +127,16 @@ def ask(query: Query):
                         "score": m.get("score"),
                         "text_preview": m["text"][:500]
                     }
-                for m in merged_list[:10]
-            ],
-            "final_answer": answer_text
-        }
-        with open(debug_path, "w") as f:
-            json.dump(debug_data, f, ensure_ascii=False, indent=2)
-        print(f"🪶 Αποθηκεύτηκε debug log: {debug_path}")
-    except Exception as e:
-        print(f"⚠️ Σφάλμα κατά το debug save: {e}")
+                    for m in merged_list[:10]
+                ],
+                "final_answer": answer_text
+            }
+            with open(debug_path, "w") as f:
+                json.dump(debug_data, f, ensure_ascii=False, indent=2)
+            print(f"🪶 Αποθηκεύτηκε debug log: {debug_path}")
+        except Exception as e:
+            print(f"⚠️ Σφάλμα κατά το debug save: {e}")
+            
         return {
             "answer": answer_text,
             "source": best["filename"],
