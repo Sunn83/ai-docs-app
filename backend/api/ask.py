@@ -85,19 +85,14 @@ def ask(query: Query):
         merged_list = sorted(merged_list, key=lambda x: x["score"], reverse=True)
         best = merged_list[0]
 
-        # CLEANUP: remove duplicate heading repetitions like "2.4 ...\n2.4 ...", collapse repeated lines
         def clean_text(t):
-        # 1) collapse multiple identical consecutive lines
-        t = re.sub(r'(?m)^(?P<L>.+)\n(?P=L)(\n(?P=L))*', r'\g<L>', t)
-        # 2) remove multiple occurrences of same heading repeated inside small window
-        t = re.sub(r'(?s)(^.{0,200}?)(\n\1)+', r'\1', t)
-        # 3) normalize excessive newlines, but KEEP structure for markdown tables
-        t = re.sub(r'\n{3,}', '\n\n', t)
-        # ❌ ΜΗΝ κάνεις join όλα τα spaces — καταστρέφει τους πίνακες
-        # t = " ".join(t.split())
-        # Αντ’ αυτού, αφαίρεσε μόνο διπλά spaces
-        t = re.sub(r' {2,}', ' ', t)
-        return t
+            # Κράτα τους πίνακες και τα markdown όπως είναι
+            lines = t.splitlines()
+            clean_lines = []
+            for line in lines:
+                # καθάρισε μόνο spaces στο τέλος, όχι newlines
+                clean_lines.append(line.strip())
+            return "\n".join(clean_lines)
 
         answer_text = clean_text(best["text"])
 
