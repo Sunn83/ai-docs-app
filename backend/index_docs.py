@@ -16,34 +16,14 @@ META_FILE = os.path.join(DATA_DIR, "docs_meta.json")
 CHUNK_SIZE = 350
 CHUNK_OVERLAP = 50
 
-
-# ✅ Μετατροπή πίνακα σε Markdown με wrap μεγάλων κελιών για ReactMarkdown
-def table_to_markdown(table, wrap_length=80):
-    """
-    Μετατρέπει έναν DOCX πίνακα σε Markdown, σπάζοντας μεγάλα κελιά για ReactMarkdown.
-    wrap_length: μέγιστος αριθμός χαρακτήρων ανά γραμμή κελιού
-    """
-    def wrap_text(text, max_length=wrap_length):
-        words = text.split()
-        lines = []
-        current = ""
-        for word in words:
-            if len(current) + len(word) + 1 > max_length:
-                lines.append(current)
-                current = word
-            else:
-                current += (" " if current else "") + word
-        if current:
-            lines.append(current)
-        return "<br>".join(lines)  # ReactMarkdown καταλαβαίνει <br> για newline
-
+# ✅ Μετατροπή πίνακα σε Markdown για ReactMarkdown χωρίς <br>
+def table_to_markdown(table):
     rows_text = []
     for row in table.rows:
         cells = []
         for cell in row.cells:
             text = cell.text.strip()
-            text = text.replace("\u00A0", " ").replace("\r", "").replace("\n", " ")
-            text = wrap_text(text)
+            text = text.replace("\u00A0", " ").replace("\r", "").replace("\n", " ").strip()
             cells.append(text)
         rows_text.append(" | ".join(cells))
 
@@ -61,7 +41,6 @@ def table_to_markdown(table, wrap_length=80):
         *rows_text[1:],
         ""
     ])
-
     return markdown_table
 
 def read_docx_sections(filepath):
