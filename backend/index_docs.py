@@ -19,76 +19,113 @@ CHUNK_OVERLAP = 50  # επικάλυψη
 
 # --- section-aware reading & chunking (βάλε στο backend/index_docs.py) ---
 
-def read_docx_sections(file_path):
-    """
-    Διαβάζει DOCX και επιστρέφει sections:
-    {"title": τίτλος ή None, "text": καθαρό κείμενο + πίνακες}
+from docx import Document
+import re
 
-    ➤ Υποστηρίζει ελληνικές επικεφαλίδες ("Επικεφαλίδα", "Άρθρο", "Θέμα" κ.λπ.)
-    ➤ Περιλαμβάνει και πίνακες (tables)
+# ✅ Μετατροπή πίνακα σε Markdown (όπως ήδη έχεις)
+def table_to_markdown(table, wrap_length=80):
+    def wrap_text(text, max_length=wrap_length):
+        words = text.split()
+        lines, current = [], ""
+        for word in words:
+            if len(current) + len(word) + 1 > max_length:
+                lines.append(current)
+                current = word
+            else:
+                current += (" " if current else "") + word
+        if current:
+            lines.append(current)
+        return "<br>".join(lines)
+
+    rows_text = []
+    for row in table.rows:
+        cells = []
+        for cell in row.cells:
+            text = cell.text.strip()
+            text = text.replace("\u00A0", " ").replace("\r", "").replace("\n", " ")
+            text = wrap_text(text)
+            cells.append(text)
+        rows_text.append(" | ".join(cells))
+
+    if not rows_text:
+        return ""
+
+    num_cols = rows_text[0].count("|") + 1
+    separator = " | ".join(["---"] * num_cols)
+
+    markdown_table = "\n".join([
+        "",
+        "📊 Πίνακας:",
+        rows_text[0],
+        separator,
+        *rows_text[1:],
+        ""
+    ])
+    return markdown_table
+
+
+# ✅ Νέα ασφαλής συνάρτηση ανάγνωσης
+def read_docx_sections(filepath):
     """
-    doc = Document(file_path)
+    Διαβάζει το DOCX με πλήρη σειρά (παράγραφοι + πίνακες)
+    και δημιουργεί καθαρές ενότητες χωρίς επαναλήψεις.
+    """
+    doc = Document(filepath)
     sections = []
     current_title = None
     current_body = []
 
     def flush_section():
+        nonlocal current_title, current_body
         if not current_title and not current_body:
             return
         text = "\n".join([t.strip() for t in current_body if t.strip()])
-        sections.append({
-            "title": current_title.strip() if current_title else None,
-            "text": text.strip()
-        })
+        if text.strip():
+            sections.append({
+                "title": current_title.strip() if current_title else None,
+                "text": text.strip()
+            })
+        current_title = None
+        current_body = []
 
-    for element in doc.element.body:
-        # Paragraph
-        if element.tag.endswith("p"):
-            p = element
-            paragraph = doc.paragraphs[len(sections) + len(current_body)] if len(doc.paragraphs) > len(sections) + len(current_body) else None
-            if not paragraph:
-                continue
-            txt = paragraph.text.strip()
+    # 🔹 Διάβασε τη δομή του docx με τη σωστή σειρά
+    for block in doc.element.body:
+        if block.tag.endswith("p"):
+            paragraph = block
+            txt = paragraph.text.strip() if hasattr(paragraph, "text") else ""
             if not txt:
                 continue
 
-            style_name = getattr(paragraph.style, "name", "").lower()
-            if style_name.startswith("heading") or "επικεφαλίδα" in style_name:
+            # Αν έχεις επικεφαλίδα (π.χ. "Άρθρο", "Θέμα", "Ενότητα")
+            style = ""
+            try:
+                style = paragraph.style.name.lower()
+            except Exception:
+                pass
+
+            if style.startswith("heading") or "επικεφαλίδα" in style:
                 flush_section()
                 current_title = txt
-                current_body = []
                 continue
 
-            # Fallback τίτλοι (π.χ. "2.4 ...", "Άρθρο 5:", "Θέμα:")
-            if re.match(r"^\s*(\d+(\.\d+)+|άρθρο\s+\d+|θέμα|ενότητα)", txt.lower()):
+            if re.match(r"^\s*(άρθρο|ενότητα|θέμα|\d+(\.\d+)+)", txt.lower()):
                 flush_section()
                 current_title = txt
-                current_body = []
                 continue
 
             current_body.append(txt)
 
-        # Table
-        elif element.tag.endswith("tbl"):
-            table = doc.tables[len([e for e in doc.element.body if e.tag.endswith('tbl')]) - len(sections)]
-            rows_text = []
-            for row in table.rows:
-                cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
-                rows_text.append(" | ".join(cells))
+        elif block.tag.endswith("tbl"):
+            try:
+                table = next(t for t in doc.tables if t._element == block)
+            except StopIteration:
+                continue
+            table_md = table_to_markdown(table)
+            if table_md.strip():
+                current_body.append(table_md)
 
-            # Αν υπάρχει header row, πρόσθεσε γραμμή διαχωρισμού --- για markdown πίνακα
-            if rows_text:
-                header = rows_text[0]
-                cols = header.count("|") + 1
-                separator = " | ".join(["---"] * cols)
-                table_text = "\n".join(["", header, separator] + rows_text[1:] + [""])
-                table_text = "📊 Πίνακας:\n" + table_text
-                current_body.append(table_text)
-
-    # flush τελευταίο section
     flush_section()
 
-    # Αν δεν βρέθηκε τίποτα, βάλε ολόκληρο το doc σαν ένα section
     if not sections:
         all_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
         sections = [{"title": None, "text": all_text}]
