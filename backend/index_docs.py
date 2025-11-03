@@ -134,35 +134,45 @@ def read_docx_sections(filepath):
 
 def chunk_section_text(section_text, max_words=400, overlap_words=60):
     """
-    Με βάση λέξεις - σπάει τη section σε chunks, κρατώντας sentences ακέραιες.
-    Επιστρέφει λίστα chunk strings.
+    Σπάει το κείμενο σε chunks ΜΟΝΟ εκτός markdown πινάκων.
+    Οι πίνακες (📊 Πίνακας:) παραμένουν ακέραιοι.
     """
     if not section_text:
         return []
 
-    # split σε προτάσεις (βασικά με ., ?, ! αλλά διατηρούμε ελληνικά)
-    sentences = re.split(r'(?<=[\.\!\?])\s+', section_text.strip())
+    # ➤ Split το section με βάση πίνακες
+    parts = re.split(r'(?=📊 Πίνακας:)', section_text)
     chunks = []
-    cur = []
-    cur_count = 0
 
-    for s in sentences:
-        words = s.split()
-        wcount = len(words)
-        if cur_count + wcount > max_words and cur:
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+
+        # Αν περιέχει πίνακα, ΜΗΝ το κόψεις
+        if part.startswith("📊 Πίνακας:"):
+            chunks.append(part)
+            continue
+
+        # Διαφορετικά, σπάσε το υπόλοιπο κείμενο με βάση προτάσεις
+        sentences = re.split(r'(?<=[\.\!\?])\s+', part)
+        cur, cur_count = [], 0
+
+        for s in sentences:
+            wcount = len(s.split())
+            if cur_count + wcount > max_words and cur:
+                chunks.append(" ".join(cur).strip())
+                tail = " ".join(" ".join(cur).split()[-overlap_words:])
+                cur = [tail, s]
+                cur_count = len(tail.split()) + wcount
+            else:
+                cur.append(s)
+                cur_count += wcount
+
+        if cur:
             chunks.append(" ".join(cur).strip())
-            # overlap: keep last overlap_words words from cur
-            tail = " ".join(" ".join(cur).split()[-overlap_words:])
-            cur = [tail, s]
-            cur_count = len(tail.split()) + wcount
-        else:
-            cur.append(s)
-            cur_count += wcount
 
-    if cur:
-        chunks.append(" ".join(cur).strip())
-
-    # dedupe empty and very short
+    # ➤ Αφαίρεσε μικρά ή άδεια chunks
     chunks = [c for c in chunks if len(c.split()) > 5]
     return chunks
 
