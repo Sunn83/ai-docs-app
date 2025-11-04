@@ -108,36 +108,10 @@ def ask(query: Query):
         if len(answer_text) > MAX_CHARS:
             answer_text = answer_text[:MAX_CHARS].rsplit(' ', 1)[0] + " ..."
 
-        # 🪶 DEBUG LOG στο container
+        # 🪶 DEBUG LOG στο container (θα το δεις με docker logs)
         print("🧾 --- FINAL ANSWER DEBUG ---")
-        print(answer_text[:800])
+        print(answer_text)
         print("-----------------------------")
-
-        # --- Ενοποίηση chunk όταν προηγείται ή ακολουθεί φράση για πίνακα ---
-        join_phrases = [
-            "κάτωθι πίνακα", "ακόλουθο πίνακα",
-            "βλέπε πίνακα", "παρακάτω πίνακα"
-        ]
-
-        for i, m in enumerate(merged_list[:-1]):
-            text_lower = m["text"].lower()
-            next_chunk = merged_list[i + 1]["text"]
-
-            # Αν το τωρινό chunk αναφέρει πίνακα και ο επόμενος περιέχει "📊 Πίνακας:"
-            if any(p in text_lower for p in join_phrases) and "📊 Πίνακας:" in next_chunk:
-                merged_list[i]["text"] = m["text"].rstrip() + "\n\n" + next_chunk.strip()
-
-            # Αν το επόμενο chunk αναφέρει πίνακα αλλά ο τωρινός περιέχει τον πίνακα
-            elif "📊 Πίνακας:" in m["text"] and any(p in next_chunk.lower() for p in join_phrases):
-                merged_list[i]["text"] = m["text"].rstrip() + "\n\n" + next_chunk.strip()
-
-        # 🧩 Καθάρισε <br> και περιττά κενά
-        for m in merged_list:
-            m["text"] = m["text"].replace("<br>", " ").replace("  ", " ").strip()
-
-        # 🧩 Debug print για merged section
-        print("🔎 MERGED SECTION TEXT:\n", merged_list[0]["text"][:800])
-        print("───────────────────────────")
 
         # 🔹 Επιστροφή JSON
         return {
