@@ -84,7 +84,7 @@ export default function ChatClient() {
                 <strong className="block mb-1 text-sm opacity-70">
                   {m.role === "user" ? "Εσύ" : "ASTbooks"}
                 </strong>
-                <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap">
+                <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
