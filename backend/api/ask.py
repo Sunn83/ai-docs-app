@@ -114,14 +114,22 @@ def ask(query: Query):
         print("-----------------------------")
 
         # --- Ενοποίηση chunk όταν προηγείται φράση "βλέπε/κάτωθι πίνακα" ---
-        join_phrases = ["κάτωθι πίνακα", "ακόλουθο πίνακα", "βλέπε πίνακα"]
+        join_phrases = ["κάτωθι πίνακα", "ακόλουθο πίνακα", "βλέπε πίνακα", "παρακάτω πίνακα", "πίνακα:"]
         for i, m in enumerate(merged_list[:-1]):
             text_lower = m["text"].lower()
             if any(p in text_lower for p in join_phrases):
                 next_chunk = merged_list[i + 1]["text"]
                 # Αν ο επόμενος περιέχει "📊 Πίνακας:", τον προσθέτουμε
                 if "📊 Πίνακας:" in next_chunk:
-                    m["text"] = m["text"].strip() + "\n\n" + next_chunk
+                    merged_list[i]["text"] = (
+                        merged_list[i]["text"].rstrip()
+                        + "\n\n"
+                        + next_chunk.strip()
+                    )
+
+        # 🧩 Debug print για merged section
+        print("🔎 MERGED SECTION TEXT:\n", merged_list[0]["text"][:800])
+        print("───────────────────────────")
 
         # 🔹 Επιστροφή JSON
         return {
