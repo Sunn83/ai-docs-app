@@ -17,13 +17,6 @@ META_FILE = os.path.join(DATA_DIR, "docs_meta.json")
 CHUNK_SIZE = 350  # λέξεις ανά chunk
 CHUNK_OVERLAP = 50  # επικάλυψη
 
-# --- section-aware reading & chunking (βάλε στο backend/index_docs.py) ---
-
-from docx import Document
-import re
-
-import re
-from docx import Document
 
 # ✅ Μετατροπή πίνακα σε Markdown (χωρίς <br> και χωρίς σπασίματα)
 def table_to_markdown(table):
