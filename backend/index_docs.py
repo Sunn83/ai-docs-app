@@ -22,27 +22,36 @@ CHUNK_OVERLAP = 50  # επικάλυψη
 from docx import Document
 import re
 
-# ✅ Μετατροπή πίνακα σε Markdown (όπως ήδη έχεις)
+# ✅ Μετατροπή πίνακα σε markdown με wrap μεγάλων κελιών (χωρίς <br>)
 def table_to_markdown(table, wrap_length=80):
+    """
+    Μετατρέπει έναν DOCX πίνακα σε Markdown.
+    Για να σπάσουμε μεγάλες γραμμές, χρησιμοποιούμε hard line breaks: δύο κενά + \n
+    (ReactMarkdown + remark-gfm θα τα εμφανίσει σωστά).
+    """
     def wrap_text(text, max_length=wrap_length):
         words = text.split()
-        lines, current = [], ""
+        lines = []
+        current = ""
         for word in words:
-            if len(current) + len(word) + 1 > max_length:
+            if len(current) + len(word) + (1 if current else 0) > max_length:
                 lines.append(current)
                 current = word
             else:
                 current += (" " if current else "") + word
         if current:
             lines.append(current)
-        return "<br>".join(lines)
+        # Χρησιμοποιούμε δύο κενά πριν το newline για hard break σε Markdown
+        return ("  \n").join([ln.strip() for ln in lines if ln.strip()])
 
     rows_text = []
     for row in table.rows:
         cells = []
         for cell in row.cells:
             text = cell.text.strip()
-            text = text.replace("\u00A0", " ").replace("\r", "").replace("\n", " ")
+            # καθάρισμα ακατάλληλων whitespace
+            text = text.replace("\u00A0", " ").replace("\r", " ").replace("\n", " ")
+            text = re.sub(r"\s+", " ", text).strip()
             text = wrap_text(text)
             cells.append(text)
         rows_text.append(" | ".join(cells))
@@ -61,6 +70,7 @@ def table_to_markdown(table, wrap_length=80):
         *rows_text[1:],
         ""
     ])
+
     return markdown_table
 
 
@@ -134,47 +144,68 @@ def read_docx_sections(filepath):
 
 def chunk_section_text(section_text, max_words=400, overlap_words=60):
     """
-    Σπάει το κείμενο σε chunks ΜΟΝΟ εκτός markdown πινάκων.
-    Οι πίνακες (📊 Πίνακας:) παραμένουν ακέραιοι.
+    Σπάει section_text σε chunks, αλλά **δεν κόβει** μέσα σε markdown πίνακες.
+    Εξάγει πρώτα κάθε '📊 Πίνακας:' block ως ξεχωριστό chunk.
+    Το υπόλοιπο κείμενο σπάει σε chunks με βάση προτάσεις.
     """
     if not section_text:
         return []
 
-    # ➤ Split το section με βάση πίνακες
-    parts = re.split(r'(?=📊 Πίνακας:)', section_text)
     chunks = []
+    # pattern που βρίσκει κάθε πίνακα που ξεκινά με "📊 Πίνακας:" έως πριν τον επόμενο ή EOF
+    table_pattern = re.compile(r'📊 Πίνακας:\n.*?(?=(?:\n📊 Πίνακας:)|\Z)', re.S)
 
-    for part in parts:
-        part = part.strip()
-        if not part:
-            continue
+    cursor = 0
+    for m in table_pattern.finditer(section_text):
+        start, end = m.span()
+        # κομμάτι πριν τον πίνακα -> το σπάμε
+        pre = section_text[cursor:start].strip()
+        if pre:
+            # split σε προτάσεις και chunk
+            sentences = re.split(r'(?<=[\.\!\?])\s+', pre)
+            cur, cur_count = [], 0
+            for s in sentences:
+                wcount = len(s.split())
+                if cur_count + wcount > max_words and cur:
+                    chunks.append(" ".join(cur).strip())
+                    tail = " ".join(" ".join(cur).split()[-overlap_words:])
+                    cur = [tail, s]
+                    cur_count = len(tail.split()) + wcount
+                else:
+                    cur.append(s)
+                    cur_count += wcount
+            if cur:
+                chunks.append(" ".join(cur).strip())
 
-        # Αν περιέχει πίνακα, ΜΗΝ το κόψεις
-        if part.startswith("📊 Πίνακας:"):
-            chunks.append(part)
-            continue
+        # ο ίδιος ο πίνακας -> προστίθεται **ολόκληρος** ως ένα chunk
+        table_block = m.group(0).strip()
+        if table_block:
+            chunks.append(table_block)
 
-        # Διαφορετικά, σπάσε το υπόλοιπο κείμενο με βάση προτάσεις
-        sentences = re.split(r'(?<=[\.\!\?])\s+', part)
+        cursor = end
+
+    # τυχόν υπόλοιπο μετά τον τελευταίο πίνακα
+    tail = section_text[cursor:].strip()
+    if tail:
+        sentences = re.split(r'(?<=[\.\!\?])\s+', tail)
         cur, cur_count = [], 0
-
         for s in sentences:
             wcount = len(s.split())
             if cur_count + wcount > max_words and cur:
                 chunks.append(" ".join(cur).strip())
-                tail = " ".join(" ".join(cur).split()[-overlap_words:])
-                cur = [tail, s]
-                cur_count = len(tail.split()) + wcount
+                tail2 = " ".join(" ".join(cur).split()[-overlap_words:])
+                cur = [tail2, s]
+                cur_count = len(tail2.split()) + wcount
             else:
                 cur.append(s)
                 cur_count += wcount
-
         if cur:
             chunks.append(" ".join(cur).strip())
 
-    # ➤ Αφαίρεσε μικρά ή άδεια chunks
+    # αφαιρούμε πολύ μικρά ή κενά
     chunks = [c for c in chunks if len(c.split()) > 5]
     return chunks
+
 
 def load_docs():
     """
