@@ -14,8 +14,8 @@ INDEX_FILE = os.path.join(DATA_DIR, "faiss.index")
 META_FILE = os.path.join(DATA_DIR, "docs_meta.json")
 
 # Ρυθμίσεις chunking
-CHUNK_SIZE = 550  # λέξεις ανά chunk
-CHUNK_OVERLAP = 100  # επικάλυψη
+CHUNK_SIZE = 350  # λέξεις ανά chunk
+CHUNK_OVERLAP = 50  # επικάλυψη
 
 # --- section-aware reading & chunking (βάλε στο backend/index_docs.py) ---
 
