@@ -70,7 +70,9 @@ def table_to_markdown(table, wrap_length=80):
         *rows_text[1:],
         ""
     ])
-
+    
+    # Καθάρισε πολλαπλές συνεχόμενες κενές γραμμές (από merged cells)
+    markdown_table = re.sub(r'\n{3,}', '\n\n', markdown_table)
     return markdown_table
 
 
