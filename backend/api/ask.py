@@ -113,6 +113,16 @@ def ask(query: Query):
         print(answer_text)
         print("-----------------------------")
 
+        # --- Ενοποίηση chunk όταν προηγείται φράση "βλέπε/κάτωθι πίνακα" ---
+        join_phrases = ["κάτωθι πίνακα", "ακόλουθο πίνακα", "βλέπε πίνακα"]
+        for i, m in enumerate(merged_list[:-1]):
+            text_lower = m["text"].lower()
+            if any(p in text_lower for p in join_phrases):
+                next_chunk = merged_list[i + 1]["text"]
+                # Αν ο επόμενος περιέχει "📊 Πίνακας:", τον προσθέτουμε
+                if "📊 Πίνακας:" in next_chunk:
+                    m["text"] = m["text"].strip() + "\n\n" + next_chunk
+
         # 🔹 Επιστροφή JSON
         return {
             "answer": answer_text,
