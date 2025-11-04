@@ -14,19 +14,36 @@ INDEX_FILE = os.path.join(DATA_DIR, "faiss.index")
 META_FILE = os.path.join(DATA_DIR, "docs_meta.json")
 
 # Ρυθμίσεις chunking
-CHUNK_SIZE = 650  # λέξεις ανά chunk
-CHUNK_OVERLAP = 150  # επικάλυψη
+CHUNK_SIZE = 350  # λέξεις ανά chunk
+CHUNK_OVERLAP = 50  # επικάλυψη
 
+# --- section-aware reading & chunking (βάλε στο backend/index_docs.py) ---
 
-# ✅ Μετατροπή πίνακα σε Markdown (χωρίς <br> και χωρίς σπασίματα)
-def table_to_markdown(table):
+from docx import Document
+import re
+
+# ✅ Μετατροπή πίνακα σε Markdown (όπως ήδη έχεις)
+def table_to_markdown(table, wrap_length=80):
+    def wrap_text(text, max_length=wrap_length):
+        words = text.split()
+        lines, current = [], ""
+        for word in words:
+            if len(current) + len(word) + 1 > max_length:
+                lines.append(current)
+                current = word
+            else:
+                current += (" " if current else "") + word
+        if current:
+            lines.append(current)
+        return "<br>".join(lines)
+
     rows_text = []
     for row in table.rows:
         cells = []
         for cell in row.cells:
             text = cell.text.strip()
-            text = text.replace("\u00A0", " ").replace("\r", " ").replace("\n", " ")
-            text = re.sub(r"\s{2,}", " ", text)
+            text = text.replace("\u00A0", " ").replace("\r", "").replace("\n", " ")
+            text = wrap_text(text)
             cells.append(text)
         rows_text.append(" | ".join(cells))
 
@@ -44,67 +61,68 @@ def table_to_markdown(table):
         *rows_text[1:],
         ""
     ])
-
-    # Καθάρισε πολλαπλά νέα κενά
-    markdown_table = re.sub(r"\n{3,}", "\n\n", markdown_table)
     return markdown_table
 
 
+# ✅ Νέα ασφαλής συνάρτηση ανάγνωσης
 def read_docx_sections(filepath):
+    """
+    Διαβάζει το DOCX με πλήρη σειρά (παράγραφοι + πίνακες)
+    και δημιουργεί καθαρές ενότητες χωρίς επαναλήψεις.
+    """
     doc = Document(filepath)
     sections = []
     current_title = None
     current_body = []
 
     def flush_section():
+        nonlocal current_title, current_body
         if not current_title and not current_body:
             return
         text = "\n".join([t.strip() for t in current_body if t.strip()])
-        sections.append({
-            "title": current_title.strip() if current_title else None,
-            "text": text.strip()
-        })
+        if text.strip():
+            sections.append({
+                "title": current_title.strip() if current_title else None,
+                "text": text.strip()
+            })
+        current_title = None
+        current_body = []
 
-    for element in doc.element.body:
-        if element.tag.endswith("p"):
-            paragraph = doc.paragraphs[
-                len([e for e in doc.element.body if e.tag.endswith('p')])
-                - len(doc.element.body)
-                + list(doc.element.body).index(element)
-            ]
-            txt = paragraph.text.strip()
+    # 🔹 Διάβασε τη δομή του docx με τη σωστή σειρά
+    for block in doc.element.body:
+        if block.tag.endswith("p"):
+            paragraph = block
+            txt = paragraph.text.strip() if hasattr(paragraph, "text") else ""
             if not txt:
                 continue
 
-            style_name = getattr(paragraph.style, "name", "").lower()
-            if style_name.startswith("heading") or "επικεφαλίδα" in style_name:
+            # Αν έχεις επικεφαλίδα (π.χ. "Άρθρο", "Θέμα", "Ενότητα")
+            style = ""
+            try:
+                style = paragraph.style.name.lower()
+            except Exception:
+                pass
+
+            if style.startswith("heading") or "επικεφαλίδα" in style:
                 flush_section()
                 current_title = txt
-                current_body = []
                 continue
 
-            if re.match(r"^\s*(\d+(\.\d+)+|άρθρο\s+\d+|θέμα|ενότητα)", txt.lower()):
+            if re.match(r"^\s*(άρθρο|ενότητα|θέμα|\d+(\.\d+)+)", txt.lower()):
                 flush_section()
                 current_title = txt
-                current_body = []
                 continue
 
             current_body.append(txt)
 
-        elif element.tag.endswith("tbl"):
-            table = None
+        elif block.tag.endswith("tbl"):
             try:
-                table = [t for t in doc.tables][
-                    len([e for e in doc.element.body if e.tag.endswith("tbl")])
-                    - len(sections)
-                    - 1
-                ]
-            except Exception:
+                table = next(t for t in doc.tables if t._element == block)
+            except StopIteration:
                 continue
-            if table:
-                table_md = table_to_markdown(table)
-                if table_md.strip():
-                    current_body.append(table_md)
+            table_md = table_to_markdown(table)
+            if table_md.strip():
+                current_body.append(table_md)
 
     flush_section()
 
@@ -116,68 +134,37 @@ def read_docx_sections(filepath):
 
 def chunk_section_text(section_text, max_words=400, overlap_words=60):
     """
-    Σπάει section_text σε chunks, αλλά **δεν κόβει** μέσα σε markdown πίνακες.
-    Εξάγει πρώτα κάθε '📊 Πίνακας:' block ως ξεχωριστό chunk.
-    Το υπόλοιπο κείμενο σπάει σε chunks με βάση προτάσεις.
+    Με βάση λέξεις - σπάει τη section σε chunks, κρατώντας sentences ακέραιες.
+    Επιστρέφει λίστα chunk strings.
     """
     if not section_text:
         return []
 
+    # split σε προτάσεις (βασικά με ., ?, ! αλλά διατηρούμε ελληνικά)
+    sentences = re.split(r'(?<=[\.\!\?])\s+', section_text.strip())
     chunks = []
-    # pattern που βρίσκει κάθε πίνακα που ξεκινά με "📊 Πίνακας:" έως πριν τον επόμενο ή EOF
-    table_pattern = re.compile(r'📊 Πίνακας:\n.*?(?=(?:\n📊 Πίνακας:)|\Z)', re.S)
+    cur = []
+    cur_count = 0
 
-    cursor = 0
-    for m in table_pattern.finditer(section_text):
-        start, end = m.span()
-        # κομμάτι πριν τον πίνακα -> το σπάμε
-        pre = section_text[cursor:start].strip()
-        if pre:
-            # split σε προτάσεις και chunk
-            sentences = re.split(r'(?<=[\.\!\?])\s+', pre)
-            cur, cur_count = [], 0
-            for s in sentences:
-                wcount = len(s.split())
-                if cur_count + wcount > max_words and cur:
-                    chunks.append(" ".join(cur).strip())
-                    tail = " ".join(" ".join(cur).split()[-overlap_words:])
-                    cur = [tail, s]
-                    cur_count = len(tail.split()) + wcount
-                else:
-                    cur.append(s)
-                    cur_count += wcount
-            if cur:
-                chunks.append(" ".join(cur).strip())
-
-        # ο ίδιος ο πίνακας -> προστίθεται **ολόκληρος** ως ένα chunk
-        table_block = m.group(0).strip()
-        if table_block:
-            chunks.append(table_block)
-
-        cursor = end
-
-    # τυχόν υπόλοιπο μετά τον τελευταίο πίνακα
-    tail = section_text[cursor:].strip()
-    if tail:
-        sentences = re.split(r'(?<=[\.\!\?])\s+', tail)
-        cur, cur_count = [], 0
-        for s in sentences:
-            wcount = len(s.split())
-            if cur_count + wcount > max_words and cur:
-                chunks.append(" ".join(cur).strip())
-                tail2 = " ".join(" ".join(cur).split()[-overlap_words:])
-                cur = [tail2, s]
-                cur_count = len(tail2.split()) + wcount
-            else:
-                cur.append(s)
-                cur_count += wcount
-        if cur:
+    for s in sentences:
+        words = s.split()
+        wcount = len(words)
+        if cur_count + wcount > max_words and cur:
             chunks.append(" ".join(cur).strip())
+            # overlap: keep last overlap_words words from cur
+            tail = " ".join(" ".join(cur).split()[-overlap_words:])
+            cur = [tail, s]
+            cur_count = len(tail.split()) + wcount
+        else:
+            cur.append(s)
+            cur_count += wcount
 
-    # αφαιρούμε πολύ μικρά ή κενά
+    if cur:
+        chunks.append(" ".join(cur).strip())
+
+    # dedupe empty and very short
     chunks = [c for c in chunks if len(c.split()) > 5]
     return chunks
-
 
 def load_docs():
     """
