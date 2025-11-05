@@ -61,16 +61,35 @@ def table_to_markdown(table, wrap_length=90):
 
 # ✅ Ανάγνωση docx με δομή και πίνακες
 def read_docx_sections(filepath):
+    from docx.oxml.text.paragraph import CT_P
+    from docx.oxml.table import CT_Tbl
+    from docx.text.paragraph import Paragraph
+    from docx.table import Table
+    from docx.oxml.ns import qn
+
     doc = Document(filepath)
     sections = []
     current_title = None
     current_body = []
 
+    def get_paragraph_text_with_breaks(paragraph):
+        """Επιστρέφει το πλήρες κείμενο μιας παραγράφου, διατηρώντας τις αλλαγές γραμμής."""
+        parts = []
+        for run in paragraph.runs:
+            if run.text:
+                parts.append(run.text)
+            # Εντοπίζει manual line breaks (<w:br/>)
+            for br in run._element.findall(".//w:br", namespaces=run._element.nsmap):
+                parts.append("\n")
+        text = "".join(parts)
+        # Καθαρισμός unicode non-breaking spaces
+        text = text.replace("\u00A0", " ").replace("\r", "").strip()
+        return text
+
     def flush_section():
         nonlocal current_title, current_body
         if not current_title and not current_body:
             return
-        # 🟢 κράτα τα line breaks όπως στο Word
         text = "\n\n".join([t.strip() for t in current_body if t.strip()])
         if text.strip():
             sections.append({
@@ -80,14 +99,15 @@ def read_docx_sections(filepath):
         current_title = None
         current_body = []
 
-    for block in doc.element.body:
-        if block.tag.endswith("p"):
-            txt = block.text.strip() if hasattr(block, "text") else ""
+    for child in doc.element.body:
+        if isinstance(child, CT_P):
+            paragraph = Paragraph(child, doc)
+            txt = get_paragraph_text_with_breaks(paragraph)
             if not txt:
                 continue
             style = ""
             try:
-                style = block.style.name.lower()
+                style = paragraph.style.name.lower()
             except Exception:
                 pass
             if style.startswith("heading") or "επικεφαλίδα" in style or re.match(r"^\s*(άρθρο|ενότητα|θέμα|\d+(\.\d+)+)", txt.lower()):
@@ -96,19 +116,18 @@ def read_docx_sections(filepath):
                 continue
             current_body.append(txt)
 
-        elif block.tag.endswith("tbl"):
-            try:
-                table = next(t for t in doc.tables if t._element == block)
-            except StopIteration:
-                continue
+        elif isinstance(child, CT_Tbl):
+            table = Table(child, doc)
             table_md = table_to_markdown(table)
             if table_md.strip():
                 current_body.append(table_md)
 
     flush_section()
+
     if not sections:
-        all_text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+        all_text = "\n".join([get_paragraph_text_with_breaks(p) for p in doc.paragraphs if p.text.strip()])
         sections = [{"title": None, "text": all_text}]
+
     return sections
 
 def chunk_section_text(section_text, max_words=500, overlap_words=100):
