@@ -24,6 +24,25 @@ print("✅ FAISS index και metadata φορτώθηκαν στη μνήμη.")
 class Query(BaseModel):
     question: str
 
+def clean_text(t: str) -> str:
+    """
+    Καθαρίζει το κείμενο χωρίς να καταστρέφει markdown ή αλλαγές γραμμής.
+    """
+    # Διατήρηση αλλαγών γραμμής όπως στο Word
+    lines = [line.rstrip() for line in t.splitlines()]
+    text = "\n".join(lines)
+
+    # Αντικατάσταση συνεχόμενων κενών γραμμών με μία διπλή αλλαγή
+    text = re.sub(r'\s*\n\s*\n\s*', '\n\n', text)
+
+    # Αντικατάσταση <br> με newline
+    text = text.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+
+    # Καθάρισε επιπλέον διπλά κενά
+    text = re.sub(r' +', ' ', text)
+
+    return text.strip()
+
 @router.post("/api/ask")
 def ask(query: Query):
     try:
