@@ -10,6 +10,7 @@ router = APIRouter()
 INDEX_FILE = "/data/faiss.index"
 META_FILE = "/data/docs_meta.json"
 
+# 🔹 Φόρτωση μοντέλου και index
 model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
 
 if not os.path.exists(INDEX_FILE) or not os.path.exists(META_FILE):
@@ -24,24 +25,15 @@ print("✅ FAISS index και metadata φορτώθηκαν στη μνήμη.")
 class Query(BaseModel):
     question: str
 
+# ✅ Νέα clean_text που διατηρεί τις αλλαγές γραμμής
 def clean_text(t: str) -> str:
-    """
-    Καθαρίζει το κείμενο χωρίς να καταστρέφει markdown ή αλλαγές γραμμής.
-    """
-    # Διατήρηση αλλαγών γραμμής όπως στο Word
-    lines = [line.rstrip() for line in t.splitlines()]
-    text = "\n".join(lines)
-
-    # Αντικατάσταση συνεχόμενων κενών γραμμών με μία διπλή αλλαγή
-    text = re.sub(r'\s*\n\s*\n\s*', '\n\n', text)
-
-    # Αντικατάσταση <br> με newline
-    text = text.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
-
-    # Καθάρισε επιπλέον διπλά κενά
-    text = re.sub(r' +', ' ', text)
-
-    return text.strip()
+    if not t:
+        return ""
+    # Μην αφαιρείς newlines, μόνο καθάρισε τα περιττά
+    t = t.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+    t = re.sub(r"[ \t]+", " ", t)   # Καθάρισε διπλά κενά
+    t = re.sub(r"\n{3,}", "\n\n", t)  # Μην αφήνεις πάνω από 2 συνεχόμενα newlines
+    return t.strip()
 
 @router.post("/api/ask")
 def ask(query: Query):
@@ -50,10 +42,12 @@ def ask(query: Query):
         if not question:
             raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
+        # 🔹 Encode query
         q_emb = model.encode([f"query: {question}"], convert_to_numpy=True)
         q_emb = q_emb.astype('float32')
         faiss.normalize_L2(q_emb)
 
+        # 🔹 Αναζήτηση FAISS
         k = 7
         D, I = index.search(q_emb, k)
 
@@ -74,6 +68,7 @@ def ask(query: Query):
         if not results:
             return {"answer": "Δεν βρέθηκε σχετική απάντηση.", "source": None, "query": question}
 
+        # 🔹 Συγχώνευση chunks ανά ενότητα
         merged_by_section = {}
         for r in results:
             key = (r["filename"], r.get("section_idx"))
@@ -86,7 +81,12 @@ def ask(query: Query):
             sorted_chunks = [t for _, t in sorted(val["chunks"], key=lambda x: x[0])]
             joined = "\n\n".join(sorted_chunks)
             avg_score = float(sum(val["scores"]) / len(val["scores"]))
-            merged_list.append({"filename": fname, "section_idx": sidx, "text": joined, "score": avg_score})
+            merged_list.append({
+                "filename": fname,
+                "section_idx": sidx,
+                "text": joined,
+                "score": avg_score
+            })
 
         merged_list = sorted(merged_list, key=lambda x: x["score"], reverse=True)
         best = merged_list[0]
@@ -99,16 +99,17 @@ def ask(query: Query):
             if any(p in text_lower for p in join_phrases) and "📊 Πίνακας:" in next_chunk:
                 merged_list[i]["text"] = m["text"].rstrip() + "\n\n" + next_chunk.strip()
 
-        # ✨ Καθάρισε τα <br>
+        # ✨ Καθάρισε και κράτα newlines
         for m in merged_list:
-            m["text"] = re.sub(r"<br\s*/?>", " ", m["text"]).replace("  ", " ").strip()
+            m["text"] = clean_text(m["text"])
 
-        answer_text = merged_list[0]["text"]
+        answer_text = clean_text(best["text"])
 
         MAX_CHARS = 4000
         if len(answer_text) > MAX_CHARS:
             answer_text = answer_text[:MAX_CHARS].rsplit(' ', 1)[0] + " ..."
 
+        # 🧾 Debug log
         print("🧾 --- FINAL ANSWER DEBUG ---")
         print(answer_text[:800])
         print("-----------------------------")
