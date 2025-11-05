@@ -124,7 +124,7 @@ def chunk_section_text(section_text, max_words=500, overlap_words=100):
     chunks = []
     prev_part = ""
 
-    join_triggers = ["πίνακα", "πίνακας", "κάτωθι πίνακα", "παρακάτω πίνακα", "ακόλουθο πίνακα", "βλέπε πίνακα"]
+    join_triggers = ["πίνακα", "πίνακας", "κάτωθι πίνακα", "παρακάτω πίνακα", "ακόλουθο πίνακα", "βλέπε πίνακα", "πίνακα:"]
 
     for part in parts:
         part = part.strip()
