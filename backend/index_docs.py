@@ -15,7 +15,7 @@ META_FILE = os.path.join(DATA_DIR, "docs_meta.json")
 
 # 📏 Ρυθμίσεις chunking (πιο μεγάλα chunks για καλύτερα context)
 CHUNK_SIZE = 500
-CHUNK_OVERLAP = 100
+CHUNK_OVERLAP = 150
 
 # ✅ Μετατροπή πίνακα σε Markdown
 def table_to_markdown(table, wrap_length=90):
