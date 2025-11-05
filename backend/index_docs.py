@@ -70,7 +70,8 @@ def read_docx_sections(filepath):
         nonlocal current_title, current_body
         if not current_title and not current_body:
             return
-        text = "\n".join([t.strip() for t in current_body if t.strip()])
+        # 🟢 κράτα τα line breaks όπως στο Word
+        text = "\n\n".join([t.strip() for t in current_body if t.strip()])
         if text.strip():
             sections.append({
                 "title": current_title.strip() if current_title else None,
