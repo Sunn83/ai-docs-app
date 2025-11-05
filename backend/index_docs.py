@@ -111,31 +111,59 @@ def read_docx_sections(filepath):
     return sections
 
 def chunk_section_text(section_text, max_words=500, overlap_words=100):
+    """
+    Σπάει το κείμενο σε chunks ΜΟΝΟ εκτός markdown πινάκων.
+    Αν εντοπίσει φράση για πίνακα ("κάτωθι πίνακα", "βλέπε πίνακα" κ.λπ.)
+    πριν από τον πίνακα, τον ενσωματώνει στο ίδιο chunk.
+    """
     if not section_text:
         return []
+
+    # Διάσπαση με βάση πίνακες
     parts = re.split(r'(?=📊 Πίνακας:)', section_text)
     chunks = []
+    prev_part = ""
+
+    join_triggers = ["πίνακα", "πίνακας", "κάτωθι πίνακα", "παρακάτω πίνακα", "ακόλουθο πίνακα", "βλέπε πίνακα"]
+
     for part in parts:
         part = part.strip()
         if not part:
             continue
+
+        # Αν το κομμάτι είναι πίνακας
         if part.startswith("📊 Πίνακας:"):
-            chunks.append(part)
+            # ➕ Αν το προηγούμενο αναφέρει πίνακα, συγχώνευσέ τα
+            if prev_part and any(trig in prev_part.lower() for trig in join_triggers):
+                prev_part = prev_part.rstrip() + "\n\n" + part.strip()
+                chunks[-1] = prev_part
+                prev_part = ""
+            else:
+                chunks.append(part)
             continue
+
+        # Κανονικό κείμενο — split σε προτάσεις
         sentences = re.split(r'(?<=[\.\!\?])\s+', part)
         cur, cur_count = [], 0
+
         for s in sentences:
             wcount = len(s.split())
             if cur_count + wcount > max_words and cur:
-                chunks.append(" ".join(cur).strip())
+                joined = " ".join(cur).strip()
+                chunks.append(joined)
                 tail = " ".join(" ".join(cur).split()[-overlap_words:])
                 cur = [tail, s]
                 cur_count = len(tail.split()) + wcount
             else:
                 cur.append(s)
                 cur_count += wcount
+
         if cur:
-            chunks.append(" ".join(cur).strip())
+            joined = " ".join(cur).strip()
+            chunks.append(joined)
+            prev_part = joined  # αποθήκευσε για πιθανό πίνακα μετά
+
+    # Καθάρισε μικρά/κενά chunks
     chunks = [c for c in chunks if len(c.split()) > 5]
     return chunks
 
