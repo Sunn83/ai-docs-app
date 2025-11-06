@@ -1,4 +1,3 @@
-# backend/index_docs.py
 import os
 import json
 from pathlib import Path
@@ -13,11 +12,9 @@ DOCS_PATH = os.path.join(DATA_DIR, "docs")
 INDEX_FILE = os.path.join(DATA_DIR, "faiss.index")
 META_FILE = os.path.join(DATA_DIR, "docs_meta.json")
 
-# 📏 Ρυθμίσεις chunking (πιο μεγάλα chunks για καλύτερα context)
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 150
 
-# ✅ Μετατροπή πίνακα σε Markdown
 def table_to_markdown(table, wrap_length=90):
     def wrap_text(text, max_length=wrap_length):
         words = text.split()
@@ -30,7 +27,6 @@ def table_to_markdown(table, wrap_length=90):
                 current += (" " if current else "") + word
         if current:
             lines.append(current)
-        # ⚙️ αντί για <br> βάλε απλό διάστημα (για να μην εμφανίζονται στο frontend)
         return " ".join(lines)
 
     rows_text = []
@@ -59,13 +55,11 @@ def table_to_markdown(table, wrap_length=90):
     ])
     return markdown_table
 
-# ✅ Ανάγνωση docx με δομή και πίνακες
 def read_docx_sections(filepath):
     from docx.oxml.text.paragraph import CT_P
     from docx.oxml.table import CT_Tbl
     from docx.text.paragraph import Paragraph
     from docx.table import Table
-    from docx.oxml.ns import qn
 
     doc = Document(filepath)
     sections = []
@@ -73,16 +67,13 @@ def read_docx_sections(filepath):
     current_body = []
 
     def get_paragraph_text_with_breaks(paragraph):
-        """Επιστρέφει το πλήρες κείμενο μιας παραγράφου, διατηρώντας τις αλλαγές γραμμής."""
         parts = []
         for run in paragraph.runs:
             if run.text:
                 parts.append(run.text)
-            # Εντοπίζει manual line breaks (<w:br/>)
             for br in run._element.findall(".//w:br", namespaces=run._element.nsmap):
                 parts.append("\n")
         text = "".join(parts)
-        # Καθαρισμός unicode non-breaking spaces
         text = text.replace("\u00A0", " ").replace("\r", "").strip()
         return text
 
@@ -115,7 +106,6 @@ def read_docx_sections(filepath):
                 current_title = txt
                 continue
             current_body.append(txt)
-
         elif isinstance(child, CT_Tbl):
             table = Table(child, doc)
             table_md = table_to_markdown(table)
@@ -127,19 +117,12 @@ def read_docx_sections(filepath):
     if not sections:
         all_text = "\n".join([get_paragraph_text_with_breaks(p) for p in doc.paragraphs if p.text.strip()])
         sections = [{"title": None, "text": all_text}]
-
     return sections
 
 def chunk_section_text(section_text, max_words=500, overlap_words=100):
-    """
-    Σπάει το κείμενο σε chunks ΜΟΝΟ εκτός markdown πινάκων.
-    Αν εντοπίσει φράση για πίνακα ("κάτωθι πίνακα", "βλέπε πίνακα" κ.λπ.)
-    πριν από τον πίνακα, τον ενσωματώνει στο ίδιο chunk.
-    """
     if not section_text:
         return []
 
-    # Διάσπαση με βάση πίνακες
     parts = re.split(r'(?=📊 Πίνακας:)', section_text)
     chunks = []
     prev_part = ""
@@ -151,9 +134,7 @@ def chunk_section_text(section_text, max_words=500, overlap_words=100):
         if not part:
             continue
 
-        # Αν το κομμάτι είναι πίνακας
         if part.startswith("📊 Πίνακας:"):
-            # ➕ Αν το προηγούμενο αναφέρει πίνακα, συγχώνευσέ τα
             if prev_part and any(trig in prev_part.lower() for trig in join_triggers):
                 prev_part = prev_part.rstrip() + "\n\n" + part.strip()
                 chunks[-1] = prev_part
@@ -162,7 +143,6 @@ def chunk_section_text(section_text, max_words=500, overlap_words=100):
                 chunks.append(part)
             continue
 
-        # Κανονικό κείμενο — split σε προτάσεις
         sentences = re.split(r'(?<=[\.\!\?])\s+', part)
         cur, cur_count = [], 0
 
@@ -181,26 +161,27 @@ def chunk_section_text(section_text, max_words=500, overlap_words=100):
         if cur:
             joined = " ".join(cur).strip()
             chunks.append(joined)
-            prev_part = joined  # αποθήκευσε για πιθανό πίνακα μετά
+            prev_part = joined
 
-    # Καθάρισε μικρά/κενά chunks
     chunks = [c for c in chunks if len(c.split()) > 5]
     return chunks
 
 def load_docs():
     metadata, all_chunks = [], []
-    for fname in os.listdir(DOCS_PATH):
-        if not fname.lower().endswith(".docx"):
-            continue
+    doc_files = [f for f in os.listdir(DOCS_PATH) if f.lower().endswith(".docx")]
+    total_files = len(doc_files)
+    print(f"Συνολικά {total_files} αρχεία προς επεξεργασία.")
+
+    for i, fname in enumerate(doc_files, start=1):
+        print(f"📘 ({i}/{total_files}) Διαβάζω: {fname} ...")
         path = os.path.join(DOCS_PATH, fname)
         sections = read_docx_sections(path)
         for si, sec in enumerate(sections):
             sec_title = sec.get("title")
             sec_text = sec.get("text") or ""
             chunks = chunk_section_text(sec_text, max_words=CHUNK_SIZE, overlap_words=CHUNK_OVERLAP)
-            if not chunks:
-                if sec_text.strip():
-                    chunks = [sec_text.strip()]
+            if not chunks and sec_text.strip():
+                chunks = [sec_text.strip()]
             for cj, chunk in enumerate(chunks):
                 metadata.append({
                     "filename": fname,
@@ -210,6 +191,7 @@ def load_docs():
                     "text": chunk
                 })
                 all_chunks.append(chunk)
+        print(f"✅ Ολοκληρώθηκε: {fname} ({len(sections)} ενότητες).")
     return all_chunks, metadata
 
 def create_faiss_index(embeddings):
@@ -220,7 +202,6 @@ def create_faiss_index(embeddings):
     return index
 
 def main():
-    print("📄 Φόρτωση DOCX αρχείων...")
     chunks, metadata = load_docs()
     print(f"➡️  Βρέθηκαν {len(chunks)} chunks προς επεξεργασία.")
     print("🔍 Φόρτωση μοντέλου embeddings...")
