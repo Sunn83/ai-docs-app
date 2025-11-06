@@ -42,12 +42,12 @@ def ask(query: Query):
         if not question:
             raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
-        # 🔹 Encode query
+        # Encode query
         q_emb = model.encode([f"query: {question}"], convert_to_numpy=True)
         q_emb = q_emb.astype('float32')
         faiss.normalize_L2(q_emb)
 
-        # 🔹 Αναζήτηση FAISS
+        # Αναζήτηση FAISS
         k = 7
         D, I = index.search(q_emb, k)
 
@@ -66,9 +66,9 @@ def ask(query: Query):
                 })
 
         if not results:
-            return {"answer": "Δεν βρέθηκε σχετική απάντηση.", "source": None, "query": question}
+            return {"answer": "Δεν βρέθηκε σχετική απάντηση.", "source": None, "query": question, "matches": []}
 
-        # 🔹 Συγχώνευση chunks ανά ενότητα
+        # Συγχώνευση chunks ανά ενότητα
         merged_by_section = {}
         for r in results:
             key = (r["filename"], r.get("section_idx"))
@@ -84,14 +84,11 @@ def ask(query: Query):
             merged_list.append({
                 "filename": fname,
                 "section_idx": sidx,
-                "text": joined,
+                "text": clean_text(joined),
                 "score": avg_score
             })
 
-        merged_list = sorted(merged_list, key=lambda x: x["score"], reverse=True)
-        best = merged_list[0]
-
-        # ✨ JOIN πίνακα όταν προηγείται αναφορά
+        # Join πίνακα όταν προηγείται αναφορά
         join_phrases = ["κάτωθι πίνακα", "ακόλουθο πίνακα", "βλέπε πίνακα", "παρακάτω πίνακα", "πίνακα:"]
         for i, m in enumerate(merged_list[:-1]):
             text_lower = m["text"].lower()
@@ -99,26 +96,23 @@ def ask(query: Query):
             if any(p in text_lower for p in join_phrases) and "📊 Πίνακας:" in next_chunk:
                 merged_list[i]["text"] = m["text"].rstrip() + "\n\n" + next_chunk.strip()
 
-        # ✨ Καθάρισε και κράτα newlines
-        for m in merged_list:
-            m["text"] = clean_text(m["text"])
+        # Ταξινόμηση top 5
+        merged_list = sorted(merged_list, key=lambda x: x["score"], reverse=True)
+        top_answers = merged_list[:5]
 
-        answer_text = clean_text(best["text"])
+        # Πρώτη απάντηση με ένδειξη πηγής
+        best = top_answers[0]
+        answer_text = f"📄 Πηγή: {best['filename']}\n\n{best['text']}"
 
         MAX_CHARS = 4000
         if len(answer_text) > MAX_CHARS:
             answer_text = answer_text[:MAX_CHARS].rsplit(' ', 1)[0] + " ..."
 
-        # 🧾 Debug log
-        print("🧾 --- FINAL ANSWER DEBUG ---")
-        print(answer_text[:800])
-        print("-----------------------------")
-
         return {
             "answer": answer_text,
             "source": best["filename"],
             "query": question,
-            "matches": merged_list[:5]
+            "matches": top_answers
         }
 
     except Exception as e:
