@@ -94,7 +94,7 @@ def ask(query: Query):
         answer_text = clean_text(best["text"])
 
         # ✨ Προσθήκη πηγής στο τέλος
-        answer_text += f"\n\n📄 Πηγή: {best['filename']}\n📑 Section: {best['section_idx']}"
+        answer_text += f"\n\n📄 Πηγή: {best['filename']}\n📑 Σελίδα: {best['section_idx']}"
 
         MAX_CHARS = 4000
         if len(answer_text) > MAX_CHARS:
