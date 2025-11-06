@@ -64,7 +64,7 @@ def ask(query: Query):
                 })
 
         if not results:
-            return {"answers": [], "query": question}
+            return {"answer": "Δεν βρέθηκε σχετική απάντηση.", "source": None, "query": question}
 
         # 🔹 Συγχώνευση chunks ανά ενότητα
         merged_by_section = {}
@@ -87,24 +87,21 @@ def ask(query: Query):
                 "chunk_id": val["chunks"][0][0] if val["chunks"] else 0
             })
 
-        # ✨ Ταξινόμηση από το πιο σχετικό
         merged_list = sorted(merged_list, key=lambda x: x["score"], reverse=True)
+        best = merged_list[0]
 
-        # 🔹 Top N απαντήσεις (π.χ. 3)
-        top_n = 3
-        answers = []
-        for best in merged_list[:top_n]:
-            text = clean_text(best["text"])
-            text += f"\n\n📄 Πηγή: {best['filename']}\n📑 Section: {best['section_idx']} | Chunk: {best['chunk_id']}"
-            if len(text) > 4000:
-                text = text[:4000].rsplit(' ', 1)[0] + " ..."
-            answers.append({
-                "answer": text,
-                "score": best["score"]
-            })
+        # ✨ Καθάρισμα κειμένου
+        answer_text = clean_text(best["text"])
+
+        # ✨ Προσθήκη πηγής στο τέλος
+        answer_text += f"\n\n📄 Πηγή: {best['filename']}\n📑 Section: {best['section_idx']} | Chunk: {best['chunk_id']}"
+
+        MAX_CHARS = 4000
+        if len(answer_text) > MAX_CHARS:
+            answer_text = answer_text[:MAX_CHARS].rsplit(' ', 1)[0] + " ..."
 
         return {
-            "answers": answers,
+            "answer": answer_text,
             "query": question
         }
 
