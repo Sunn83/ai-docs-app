@@ -6,7 +6,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 router = APIRouter()
-
+TOP_K = 3  # πόσες απαντήσεις θέλουμε να επιστρέφουμε
 INDEX_FILE = "/data/faiss.index"
 META_FILE = "/data/docs_meta.json"
 
@@ -76,17 +76,24 @@ def ask(query: Query):
             merged_by_section[key]["chunks"].append((r["chunk_id"], r["text"]))
             merged_by_section[key]["scores"].append(r["score"])
 
-        merged_list = []
-        for (fname, sidx), val in merged_by_section.items():
-            sorted_chunks = [t for _, t in sorted(val["chunks"], key=lambda x: x[0])]
-            joined = "\n\n".join(sorted_chunks)
-            avg_score = float(sum(val["scores"]) / len(val["scores"]))
-            merged_list.append({
-                "filename": fname,
-                "section_idx": sidx,
-                "text": clean_text(joined),
-                "score": avg_score
+        merged_list = sorted(merged_list, key=lambda x: x["score"], reverse=True)
+        top_answers = merged_list[:TOP_K]
+
+        answers_for_json = []
+        for a in top_answers:
+            text_with_source = f"{a['text']}\n\n📄 Πηγή: {a['filename']}\n📑 Section: {a.get('section_idx')} | Chunk: {a.get('chunk_id')}"
+            answers_for_json.append({
+                "text": text_with_source,
+                "source": a['filename'],
+                "section": a.get('section_idx'),
+                "chunk_id": a.get('chunk_id')
             })
+
+return {
+    "answer": answers_for_json[0]["text"],  # η καλύτερη απάντηση ως main
+    "query": question,
+    "answers": answers_for_json
+}
 
         # Join πίνακα όταν προηγείται αναφορά
         join_phrases = ["κάτωθι πίνακα", "ακόλουθο πίνακα", "βλέπε πίνακα", "παρακάτω πίνακα", "πίνακα:"]
