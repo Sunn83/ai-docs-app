@@ -1,4 +1,3 @@
-# backend/api/ask.py
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import faiss, json, os, re
@@ -28,6 +27,7 @@ class Query(BaseModel):
 def clean_text(t: str) -> str:
     if not t:
         return ""
+    # Κρατάμε line breaks και markdown για πίνακες
     t = t.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
     t = re.sub(r"[ \t]+", " ", t)
     t = re.sub(r"\n{3,}", "\n\n", t)
@@ -40,12 +40,12 @@ def ask(query: Query):
         if not question:
             raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
-        # 🔹 Encode query
+        # Encode query
         q_emb = model.encode([f"query: {question}"], convert_to_numpy=True)
         q_emb = q_emb.astype('float32')
         faiss.normalize_L2(q_emb)
 
-        # 🔹 Αναζήτηση FAISS
+        # Αναζήτηση FAISS
         k = 7
         D, I = index.search(q_emb, k)
 
@@ -60,25 +60,23 @@ def ask(query: Query):
                     "section_title": md.get("section_title"),
                     "section_idx": md.get("section_idx"),
                     "chunk_id": md.get("chunk_id"),
-                    "text": md.get("text"),
-                    # 📝 Μέλλον: pdf_link & page
-                    "pdf_link": md.get("pdf_link"),
-                    "page": md.get("page")
+                    "text": md.get("text")
                 })
 
         if not results:
             return {"answer": "Δεν βρέθηκε σχετική απάντηση.", "source": None, "query": question, "matches": []}
 
-        # 🔹 Συγχώνευση chunks ανά ενότητα
+        # Συγχώνευση chunks ανά ενότητα
         merged_by_section = {}
         for r in results:
             key = (r["filename"], r.get("section_idx"))
-            merged_by_section.setdefault(key, {"chunks": [], "scores": [], "pdf_link": r.get("pdf_link"), "page": r.get("page")})
+            merged_by_section.setdefault(key, {"chunks": [], "scores": []})
             merged_by_section[key]["chunks"].append((r["chunk_id"], r["text"]))
             merged_by_section[key]["scores"].append(r["score"])
 
         merged_list = []
         for (fname, sidx), val in merged_by_section.items():
+            # Ταξινομούμε chunks
             sorted_chunks = [t for _, t in sorted(val["chunks"], key=lambda x: x[0])]
             joined = "\n\n".join(sorted_chunks)
             avg_score = float(sum(val["scores"]) / len(val["scores"]))
@@ -86,12 +84,10 @@ def ask(query: Query):
                 "filename": fname,
                 "section_idx": sidx,
                 "text": clean_text(joined),
-                "score": avg_score,
-                "pdf_link": val["pdf_link"],
-                "page": val["page"]
+                "score": avg_score
             })
 
-        # ✨ Join πίνακα όταν προηγείται αναφορά
+        # Join πίνακα όταν προηγείται αναφορά
         join_phrases = ["κάτωθι πίνακα", "ακόλουθο πίνακα", "βλέπε πίνακα", "παρακάτω πίνακα", "πίνακα:"]
         for i, m in enumerate(merged_list[:-1]):
             text_lower = m["text"].lower()
@@ -99,26 +95,18 @@ def ask(query: Query):
             if any(p in text_lower for p in join_phrases) and "📊 Πίνακας:" in next_chunk:
                 merged_list[i]["text"] = m["text"].rstrip() + "\n\n" + next_chunk.strip()
 
-        # 🔹 Ταξινόμηση top 3
+        # Ταξινόμηση top 3
         merged_list = sorted(merged_list, key=lambda x: x["score"], reverse=True)
         top_answers = merged_list[:3]
 
-        # 🔹 Σύντομη απάντηση για το πρώτο
+        # Πρώτη απάντηση
         answer_text = top_answers[0]["text"]
-        MAX_CHARS = 4000
-        if len(answer_text) > MAX_CHARS:
-            answer_text = answer_text[:MAX_CHARS].rsplit(' ', 1)[0] + " ..."
-
-        # 🧾 Debug
-        print("🧾 --- FINAL ANSWER DEBUG ---")
-        print(answer_text[:800])
-        print("-----------------------------")
 
         return {
             "answer": answer_text,
             "source": top_answers[0]["filename"],
             "query": question,
-            "matches": top_answers  # top 3 για tabs στο frontend
+            "matches": top_answers
         }
 
     except Exception as e:
