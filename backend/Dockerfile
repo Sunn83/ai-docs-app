@@ -10,7 +10,7 @@ RUN apt-get update && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 📦 Εγκατάσταση Python dependencies
-RUN pip install --no-cache-dir fastapi uvicorn python-docx pydantic faiss-cpu sentence-transformers
+RUN pip install --no-cache-dir fastapi uvicorn python-docx pydantic faiss-cpu sentence-transformers PyMuPDF
 
 EXPOSE 8000
 
