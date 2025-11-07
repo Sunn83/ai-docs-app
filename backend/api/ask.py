@@ -9,7 +9,7 @@ router = APIRouter()
 
 INDEX_FILE = "/data/faiss.index"
 META_FILE = "/data/docs_meta.json"
-PDF_BASE_URL = "http://144.91.115.48:3000/pdf"  # URL όπου εκθέτουμε τα PDF
+PDF_BASE_URL = "http://144.91.115.48:8000/pdf"  # URL όπου εκθέτουμε τα PDF
 
 # 🔹 Φόρτωση μοντέλου και index
 model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
