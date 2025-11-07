@@ -7,7 +7,6 @@ import numpy as np
 import faiss
 import re
 import subprocess
-import fitz  # PyMuPDF
 
 DATA_DIR = "/data"
 DOCS_PATH = os.path.join(DATA_DIR, "docs")
@@ -202,20 +201,6 @@ def convert_to_pdf(docx_path, pdf_dir):
 
     return pdf_file
 
-# ---------------------------------------------------
-# 🔹 Βρίσκει τη σελίδα στο PDF που αντιστοιχεί σε ένα κομμάτι κειμένου
-# ---------------------------------------------------
-def get_page_for_text(pdf_path, text_snippet):
-    try:
-        doc = fitz.open(pdf_path)
-        snippet = text_snippet[:1000]  # παίρνουμε μόνο αρχικά 1000 chars
-        for page_num, page in enumerate(doc, start=1):
-            if snippet[:40].strip() in page.get_text("text"):
-                return page_num
-        return 1  # αν δεν βρεθεί, επέστρεψε 1
-    except Exception as e:
-        print(f"⚠️ Δεν βρέθηκε σελίδα για {os.path.basename(pdf_path)}: {e}")
-        return 1
 
 # ---------------------------------------------------
 # 🔹 5. Φόρτωση όλων των DOCX
@@ -241,16 +226,12 @@ def load_docs():
             if not chunks and sec_text.strip():
                 chunks = [sec_text.strip()]
             for cj, chunk in enumerate(chunks):
-                # ✅ Υπολογισμός πραγματικής σελίδας PDF
-                page_num = get_page_for_text(pdf_path, chunk)
-                
                 metadata.append({
                     "filename": fname,
                     "pdf_path": pdf_path,
                     "section_title": sec_title,
                     "section_idx": si,
                     "chunk_id": cj,
-                    "page_num": page_num,  # <-- προσθήκη!
                     "text": chunk
                 })
                 all_chunks.append(chunk)
