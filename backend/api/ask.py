@@ -3,11 +3,13 @@ from pydantic import BaseModel
 import faiss, json, os, re
 import numpy as np
 from sentence_transformers import SentenceTransformer
+import urllib.parse  # για σωστή κωδικοποίηση URL
 
 router = APIRouter()
 
 INDEX_FILE = "/data/faiss.index"
 META_FILE = "/data/docs_meta.json"
+PDF_BASE_URL = "http://144.91.115.48:3000/pdf"  # URL όπου εκθέτουμε τα PDF
 
 # 🔹 Φόρτωση μοντέλου και index
 model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
@@ -24,8 +26,8 @@ print("✅ FAISS index και metadata φορτώθηκαν στη μνήμη.")
 class Query(BaseModel):
     question: str
 
-# ✅ Καθαρισμός κειμένου, διατηρεί newlines
 def clean_text(t: str) -> str:
+    """Καθαρισμός κειμένου, διατηρεί newlines"""
     if not t:
         return ""
     t = t.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
@@ -57,6 +59,7 @@ def ask(query: Query):
                     "idx": int(idx),
                     "score": float(score),
                     "filename": md["filename"],
+                    "pdf_path": md.get("pdf_path"),  # το προσθέσαμε στο indexing
                     "section_title": md.get("section_title"),
                     "section_idx": md.get("section_idx"),
                     "chunk_id": md.get("chunk_id"),
@@ -70,7 +73,7 @@ def ask(query: Query):
         merged_by_section = {}
         for r in results:
             key = (r["filename"], r.get("section_idx"))
-            merged_by_section.setdefault(key, {"chunks": [], "scores": []})
+            merged_by_section.setdefault(key, {"chunks": [], "scores": [], "pdf_path": r.get("pdf_path")})
             merged_by_section[key]["chunks"].append((r["chunk_id"], r["text"]))
             merged_by_section[key]["scores"].append(r["score"])
 
@@ -84,7 +87,8 @@ def ask(query: Query):
                 "section_idx": sidx,
                 "text": joined,
                 "score": avg_score,
-                "chunk_id": val["chunks"][0][0] if val["chunks"] else 0
+                "chunk_id": val["chunks"][0][0] if val["chunks"] else 0,
+                "pdf_path": val.get("pdf_path")
             })
 
         merged_list = sorted(merged_list, key=lambda x: x["score"], reverse=True)
@@ -93,8 +97,18 @@ def ask(query: Query):
         # ✨ Καθάρισμα κειμένου
         answer_text = clean_text(best["text"])
 
+        # ✨ Δημιουργία link για PDF με σελίδα
+        pdf_link = ""
+        if best.get("pdf_path"):
+            filename_encoded = urllib.parse.quote(os.path.basename(best["pdf_path"]))
+            page_num = best.get("section_idx", 0) + 1  # αν θέλουμε 1-based σελίδα
+            pdf_link = f"{PDF_BASE_URL}/{filename_encoded}#page={page_num}"
+
         # ✨ Προσθήκη πηγής στο τέλος
-        answer_text += f"\n\n📄 Πηγή: {best['filename']}\n📑 Σελίδα: {best['section_idx']}"
+        if pdf_link:
+            answer_text += f"\n\n📄 Πηγή: [{best['filename']}]({pdf_link})\n📑 Σελίδα: {best['section_idx'] + 1}"
+        else:
+            answer_text += f"\n\n📄 Πηγή: {best['filename']}\n📑 Σελίδα: {best['section_idx'] + 1}"
 
         MAX_CHARS = 4000
         if len(answer_text) > MAX_CHARS:
