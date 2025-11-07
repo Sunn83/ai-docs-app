@@ -6,15 +6,20 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 import faiss
 import re
+import subprocess
 
 DATA_DIR = "/data"
 DOCS_PATH = os.path.join(DATA_DIR, "docs")
+PDF_PATH = os.path.join(DATA_DIR, "pdfs")
 INDEX_FILE = os.path.join(DATA_DIR, "faiss.index")
 META_FILE = os.path.join(DATA_DIR, "docs_meta.json")
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 150
 
+# ---------------------------------------------------
+# 🔹 1. Helper για πίνακες σε Markdown
+# ---------------------------------------------------
 def table_to_markdown(table, wrap_length=90):
     def wrap_text(text, max_length=wrap_length):
         words = text.split()
@@ -55,6 +60,10 @@ def table_to_markdown(table, wrap_length=90):
     ])
     return markdown_table
 
+
+# ---------------------------------------------------
+# 🔹 2. Διαβάζει sections από DOCX
+# ---------------------------------------------------
 def read_docx_sections(filepath):
     from docx.oxml.text.paragraph import CT_P
     from docx.oxml.table import CT_Tbl
@@ -119,6 +128,10 @@ def read_docx_sections(filepath):
         sections = [{"title": None, "text": all_text}]
     return sections
 
+
+# ---------------------------------------------------
+# 🔹 3. Σπάσιμο κειμένου σε chunks
+# ---------------------------------------------------
 def chunk_section_text(section_text, max_words=500, overlap_words=100):
     if not section_text:
         return []
@@ -166,6 +179,32 @@ def chunk_section_text(section_text, max_words=500, overlap_words=100):
     chunks = [c for c in chunks if len(c.split()) > 5]
     return chunks
 
+
+# ---------------------------------------------------
+# 🔹 4. Μετατροπή DOCX → PDF (LibreOffice)
+# ---------------------------------------------------
+def convert_to_pdf(docx_path, pdf_dir):
+    os.makedirs(pdf_dir, exist_ok=True)
+    pdf_file = os.path.join(pdf_dir, os.path.splitext(os.path.basename(docx_path))[0] + ".pdf")
+
+    if not os.path.exists(pdf_file):
+        print(f"⚙️ Μετατροπή σε PDF: {os.path.basename(docx_path)} ...")
+        try:
+            subprocess.run([
+                "libreoffice", "--headless", "--convert-to", "pdf",
+                "--outdir", pdf_dir, docx_path
+            ], check=True)
+        except Exception as e:
+            print(f"❌ Σφάλμα στη μετατροπή σε PDF: {e}")
+    else:
+        print(f"📄 Υπάρχει ήδη PDF για {os.path.basename(docx_path)}")
+
+    return pdf_file
+
+
+# ---------------------------------------------------
+# 🔹 5. Φόρτωση όλων των DOCX
+# ---------------------------------------------------
 def load_docs():
     metadata, all_chunks = [], []
     doc_files = [f for f in os.listdir(DOCS_PATH) if f.lower().endswith(".docx")]
@@ -175,6 +214,10 @@ def load_docs():
     for i, fname in enumerate(doc_files, start=1):
         print(f"📘 ({i}/{total_files}) Διαβάζω: {fname} ...")
         path = os.path.join(DOCS_PATH, fname)
+
+        # ➕ Αυτόματη μετατροπή σε PDF (αν δεν υπάρχει)
+        pdf_path = convert_to_pdf(path, PDF_PATH)
+
         sections = read_docx_sections(path)
         for si, sec in enumerate(sections):
             sec_title = sec.get("title")
@@ -185,6 +228,7 @@ def load_docs():
             for cj, chunk in enumerate(chunks):
                 metadata.append({
                     "filename": fname,
+                    "pdf_path": pdf_path,
                     "section_title": sec_title,
                     "section_idx": si,
                     "chunk_id": cj,
@@ -194,6 +238,10 @@ def load_docs():
         print(f"✅ Ολοκληρώθηκε: {fname} ({len(sections)} ενότητες).")
     return all_chunks, metadata
 
+
+# ---------------------------------------------------
+# 🔹 6. Δημιουργία FAISS index
+# ---------------------------------------------------
 def create_faiss_index(embeddings):
     faiss.normalize_L2(embeddings)
     dim = embeddings.shape[1]
@@ -201,6 +249,10 @@ def create_faiss_index(embeddings):
     index.add(embeddings)
     return index
 
+
+# ---------------------------------------------------
+# 🔹 7. Main
+# ---------------------------------------------------
 def main():
     chunks, metadata = load_docs()
     print(f"➡️  Βρέθηκαν {len(chunks)} chunks προς επεξεργασία.")
@@ -215,6 +267,7 @@ def main():
     with open(META_FILE, "w", encoding="utf-8") as f:
         json.dump(metadata, f, ensure_ascii=False, indent=2)
     print("✅ Indexing ολοκληρώθηκε επιτυχώς!")
+
 
 if __name__ == "__main__":
     main()
