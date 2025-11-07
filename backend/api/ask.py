@@ -106,7 +106,7 @@ def ask(query: Query):
 
         # ✨ Προσθήκη πηγής στο τέλος
         if pdf_link:
-            answer_text += f"\n\n📄 Πηγή: [{best['filename']}]({pdf_link})\n📑 Σελίδα: {best['section_idx'] + 1}"
+            answer_text += f"\n\n📄 Πηγή: [{best['filename']}]({pdf_link})\n📑 Σελίδα: {best['page_num'] + 1}"
         else:
             answer_text += f"\n\n📄 Πηγή: {best['filename']}\n📑 Σελίδα: {best['section_idx'] + 1}"
 
