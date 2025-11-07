@@ -101,12 +101,16 @@ def ask(query: Query):
         pdf_link = ""
         if best.get("pdf_path"):
             filename_encoded = urllib.parse.quote(os.path.basename(best["pdf_path"]))
-            page_num = best.get("section_idx", 0) + 1  # αν θέλουμε 1-based σελίδα
+            page_num = best.get("section_idx", 0) + 1  # 1-based σελίδα
             pdf_link = f"{PDF_BASE_URL}/{filename_encoded}#page={page_num}"
 
         # ✨ Προσθήκη πηγής στο τέλος
         if pdf_link:
-            answer_text += f"\n\n📄 Πηγή: [{best['filename']}]({pdf_link})\n📑 Σελίδα: {best['section_idx'] + 1}"
+            answer_text += (
+                f"\n\n📄 Πηγή: "
+                f'<a href="{pdf_link}" target="_blank" style="color:blue">{best["filename"]}</a>'
+                f"\n📑 Σελίδα: {best['section_idx'] + 1}"
+            )
         else:
             answer_text += f"\n\n📄 Πηγή: {best['filename']}\n📑 Σελίδα: {best['section_idx'] + 1}"
 
