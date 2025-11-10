@@ -6,15 +6,15 @@ import remarkGfm from "remark-gfm";
 
 type Message = {
   role: "user" | "assistant";
-  content: string[]; // Πολλαπλές απαντήσεις
-  activeTab: number; // ενεργή απάντηση
+  content: string[]; // Κάθε απάντηση είναι string σε array
+  activeTab: number; // Active tab για multi-answer
 };
 
 export default function ChatClient() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -36,7 +36,8 @@ export default function ChatClient() {
       });
 
       const data = await res.json();
-      const answers: string[] =
+
+      const answers =
         data.answers?.map((a: any) => a.answer) || ["⚠️ Δεν βρέθηκαν απαντήσεις."];
 
       const botMessage: Message = { role: "assistant", content: answers, activeTab: 0 };
@@ -63,7 +64,9 @@ export default function ChatClient() {
 
   const setTab = (msgIndex: number, tabIndex: number) => {
     setMessages((prev) =>
-      prev.map((m, i) => (i === msgIndex ? { ...m, activeTab: tabIndex } : m))
+      prev.map((m, i) =>
+        i === msgIndex ? { ...m, activeTab: tabIndex } : m
+      )
     );
   };
 
@@ -72,7 +75,7 @@ export default function ChatClient() {
       <div className="w-full max-w-2xl bg-white shadow-lg rounded-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-500 text-white p-4 font-semibold text-lg flex items-center justify-center">
-          💼 ASTbooks — Έξυπνος Βοηθός - Υπό Κατασκευή
+          💼 ASTbooks — Έξυπνος Βοηθός
         </div>
 
         {/* Messages */}
@@ -93,7 +96,7 @@ export default function ChatClient() {
                   {m.role === "user" ? "Εσύ" : "ASTbooks"}
                 </strong>
 
-                {/* Tabs αν υπάρχουν πολλαπλές απαντήσεις */}
+                {/* Tabs αν υπάρχει >1 απάντηση */}
                 {m.content.length > 1 && (
                   <div className="flex space-x-2 mb-2">
                     {m.content.map((_, idx) => (
@@ -113,25 +116,26 @@ export default function ChatClient() {
                 )}
 
                 {/* Active answer */}
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    a: ({ node, href, children, ...props }) => (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: "blue" }}
-                        {...props}
-                      >
-                        {children}
-                      </a>
-                    ),
-                  }}
-                  className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed"
-                >
-                  {m.content[m.activeTab]}
-                </ReactMarkdown>
+                <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      a: ({ node, href, children, ...props }) => (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: "blue" }}
+                          {...props}
+                        >
+                          {children}
+                        </a>
+                      ),
+                    }}
+                  >
+                    {m.content[m.activeTab]}
+                  </ReactMarkdown>
+                </div>
               </div>
             </div>
           ))}
@@ -160,12 +164,4 @@ export default function ChatClient() {
           <button
             onClick={sendMessage}
             disabled={loading}
-            className="ml-3 px-5 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition disabled:opacity-50"
-          >
-            Αποστολή
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+            className="ml-3 px-5 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition disabled:opacity-50
