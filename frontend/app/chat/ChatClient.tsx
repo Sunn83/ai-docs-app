@@ -130,6 +130,7 @@ export default function ChatClient() {
                       </a>
                     ),
                   }}
+                  className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed"
                 >
                   {m.content[m.activeTab]}
                 </ReactMarkdown>
