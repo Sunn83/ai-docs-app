@@ -63,7 +63,7 @@ export default function ChatClient() {
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6">
       <div className="w-full max-w-2xl bg-white shadow-lg rounded-2xl flex flex-col overflow-hidden">
         <div className="bg-gradient-to-r from-blue-600 to-indigo-500 text-white p-4 font-semibold text-lg flex items-center justify-center">
-          💼 ASTbooks — Έξυπνος Βοηθός
+          💼 ASTbooks — Έξυπνος Βοηθός - Υπο Κατασκευή
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
