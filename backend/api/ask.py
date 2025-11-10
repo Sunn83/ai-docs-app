@@ -1,180 +1,93 @@
-"use client";
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+import faiss, json, os, re
+import numpy as np
+from sentence_transformers import SentenceTransformer
+from urllib.parse import quote
 
-import { useState, useRef, useEffect } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+router = APIRouter()
 
-export default function ChatClient() {
-  const [messages, setMessages] = useState<
-    { role: "user" | "assistant"; content: string | string[] }[]
-  >([]);
-  const [input, setInput] = useState("");
-  const [activeTab, setActiveTab] = useState(0);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const [loading, setLoading] = useState(false);
+INDEX_FILE = "/data/faiss.index"
+META_FILE = "/data/docs_meta.json"
+PDF_BASE_URL = "http://144.91.115.48:8000/pdf"  # ✅ σωστό path για pdfs
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+# 🔹 Φόρτωση μοντέλου και index
+model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
-    const userMessage = { role: "user" as const, content: input };
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setLoading(true);
+if not os.path.exists(INDEX_FILE) or not os.path.exists(META_FILE):
+    raise RuntimeError("❌ Δεν βρέθηκε FAISS index ή metadata.")
 
-    try {
-      const res = await fetch("/api/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: input }),
-      });
+index = faiss.read_index(INDEX_FILE)
+with open(META_FILE, "r", encoding="utf-8") as f:
+    metadata = json.load(f)
 
-      const data = await res.json();
+print("✅ FAISS index και metadata φορτώθηκαν στη μνήμη.")
 
-      const answers =
-        data.answers?.map((a: any) => a.answer) || ["⚠️ Δεν βρέθηκαν απαντήσεις."];
+class Query(BaseModel):
+    question: str
 
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant" as const, content: answers },
-      ]);
-      setActiveTab(0);
-    } catch (err) {
-      console.error("Error:", err);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant" as const, content: ["⚠️ Σφάλμα κατά τη λήψη απάντησης."] },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !loading) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
+def clean_text(t: str) -> str:
+    if not t:
+        return ""
+    t = t.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+    t = re.sub(r"[ \t]+", " ", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
 
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6">
-      <div className="w-full max-w-2xl bg-white shadow-lg rounded-2xl flex flex-col overflow-hidden">
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-500 text-white p-4 font-semibold text-lg flex items-center justify-center">
-          💼 ASTbooks — Έξυπνος Βοηθός
-        </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div
-                className={`max-w-[80%] p-3 rounded-2xl shadow-sm whitespace-pre-line ${
-                  m.role === "user"
-                    ? "bg-blue-100 text-blue-900 rounded-br-none"
-                    : "bg-gray-100 text-gray-800 rounded-bl-none"
-                }`}
-              >
-                <strong className="block mb-1 text-sm opacity-70">
-                  {m.role === "user" ? "Εσύ" : "ASTbooks"}
-                </strong>
+@router.post("/api/ask")
+def ask(query: Query):
+    try:
+        question = query.question.strip()
+        if not question:
+            raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
-                {Array.isArray(m.content) ? (
-                  <>
-                    {/* Tabs */}
-                    <div className="flex space-x-2 mb-2">
-                      {m.content.map((_, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => setActiveTab(idx)}
-                          className={`px-3 py-1 rounded-xl text-sm ${
-                            activeTab === idx
-                              ? "bg-blue-600 text-white"
-                              : "bg-gray-200 text-gray-700"
-                          }`}
-                        >
-                          Απάντηση {idx + 1}
-                        </button>
-                      ))}
-                    </div>
+        # 🔹 Encode query
+        q_emb = model.encode([f"query: {question}"], convert_to_numpy=True)
+        q_emb = q_emb.astype("float32")
+        faiss.normalize_L2(q_emb)
 
-                    {/* Active answer */}
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      linkTarget="_blank"
-                      components={{
-                        a: ({ node, href, children, ...props }) => (
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ color: "blue" }}
-                            {...props}
-                          >
-                            {children}
-                          </a>
-                        ),
-                      }}
-                      className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed"
-                    >
-                      {m.content[activeTab]}
-                    </ReactMarkdown>
-                  </>
-                ) : (
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    linkTarget="_blank"
-                    components={{
-                      a: ({ node, href, children, ...props }) => (
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ color: "blue" }}
-                          {...props}
-                        >
-                          {children}
-                        </a>
-                      ),
-                    }}
-                    className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed"
-                  >
-                    {m.content}
-                  </ReactMarkdown>
-                )}
-              </div>
-            </div>
-          ))}
+        # 🔹 Αναζήτηση FAISS
+        k = 10
+        D, I = index.search(q_emb, k)
 
-          {loading && (
-            <div className="flex justify-start">
-              <div className="bg-gray-100 p-3 rounded-2xl rounded-bl-none shadow-sm text-gray-500 italic">
-                ✨ Η ASTbooks σκέφτεται...
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
+        results = []
+        for idx, score in zip(I[0], D[0]):
+            if idx < len(metadata):
+                md = metadata[idx]
+                results.append({
+                    "idx": int(idx),
+                    "score": float(score),
+                    "filename": md.get("filename", "unknown.pdf"),
+                    "page": md.get("page", 1),
+                    "text": md.get("text", "")
+                })
 
-        <div className="border-t border-gray-200 p-4 flex items-center bg-gray-50">
-          <input
-            type="text"
-            placeholder="Γράψε την ερώτησή σου..."
-            className="flex-1 border border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyPress}
-          />
-          <button
-            onClick={sendMessage}
-            disabled={loading}
-            className="ml-3 px-5 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition disabled:opacity-50"
-          >
-            Αποστολή
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+        if not results:
+            return {"answers": [{"answer": "Δεν βρέθηκε σχετική απάντηση.", "score": 0}], "query": question}
+
+        # 🔹 Κράτα τις 3 καλύτερες
+        top_results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
+
+        answers = []
+        for r in top_results:
+            answer_text = clean_text(r["text"])
+            encoded_filename = quote(r["filename"])
+            pdf_url = f"{PDF_BASE_URL}/{encoded_filename}#page={r['page']}"
+
+            formatted = (
+                f"{answer_text}\n\n"
+                f"📄 Πηγή: [{r['filename']}]({pdf_url})\n"
+                f"📑 Σελίδα: {r['page']}"
+            )
+
+            answers.append({
+                "answer": formatted,
+                "score": r["score"]
+            })
+
+        return {"answers": answers, "query": question}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
