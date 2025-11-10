@@ -1,109 +1,180 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-import faiss, json, os, re
-import numpy as np
-from sentence_transformers import SentenceTransformer
+"use client";
 
-router = APIRouter()
+import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
-INDEX_FILE = "/data/faiss.index"
-META_FILE = "/data/docs_meta.json"
+export default function ChatClient() {
+  const [messages, setMessages] = useState<
+    { role: "user" | "assistant"; content: string | string[] }[]
+  >([]);
+  const [input, setInput] = useState("");
+  const [activeTab, setActiveTab] = useState(0);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const [loading, setLoading] = useState(false);
 
-# 🔹 Φόρτωση μοντέλου και index
-model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-if not os.path.exists(INDEX_FILE) or not os.path.exists(META_FILE):
-    raise RuntimeError("❌ Δεν βρέθηκε FAISS index ή metadata.")
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+    const userMessage = { role: "user" as const, content: input };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setLoading(true);
 
-index = faiss.read_index(INDEX_FILE)
-with open(META_FILE, "r", encoding="utf-8") as f:
-    metadata = json.load(f)
+    try {
+      const res = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: input }),
+      });
 
-print("✅ FAISS index και metadata φορτώθηκαν στη μνήμη.")
+      const data = await res.json();
 
-class Query(BaseModel):
-    question: str
+      const answers =
+        data.answers?.map((a: any) => a.answer) || ["⚠️ Δεν βρέθηκαν απαντήσεις."];
 
-# ✅ Καθαρισμός κειμένου, διατηρεί newlines
-def clean_text(t: str) -> str:
-    if not t:
-        return ""
-    t = t.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
-    t = re.sub(r"[ \t]+", " ", t)
-    t = re.sub(r"\n{3,}", "\n\n", t)
-    return t.strip()
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant" as const, content: answers },
+      ]);
+      setActiveTab(0);
+    } catch (err) {
+      console.error("Error:", err);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant" as const, content: ["⚠️ Σφάλμα κατά τη λήψη απάντησης."] },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-@router.post("/api/ask")
-def ask(query: Query):
-    try:
-        question = query.question.strip()
-        if not question:
-            raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !loading) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
 
-        # 🔹 Encode query
-        q_emb = model.encode([f"query: {question}"], convert_to_numpy=True)
-        q_emb = q_emb.astype('float32')
-        faiss.normalize_L2(q_emb)
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6">
+      <div className="w-full max-w-2xl bg-white shadow-lg rounded-2xl flex flex-col overflow-hidden">
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-500 text-white p-4 font-semibold text-lg flex items-center justify-center">
+          💼 ASTbooks — Έξυπνος Βοηθός
+        </div>
 
-        # 🔹 Αναζήτηση FAISS
-        k = 7
-        D, I = index.search(q_emb, k)
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {messages.map((m, i) => (
+            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-[80%] p-3 rounded-2xl shadow-sm whitespace-pre-line ${
+                  m.role === "user"
+                    ? "bg-blue-100 text-blue-900 rounded-br-none"
+                    : "bg-gray-100 text-gray-800 rounded-bl-none"
+                }`}
+              >
+                <strong className="block mb-1 text-sm opacity-70">
+                  {m.role === "user" ? "Εσύ" : "ASTbooks"}
+                </strong>
 
-        results = []
-        for idx, score in zip(I[0], D[0]):
-            if idx < len(metadata):
-                md = metadata[idx]
-                results.append({
-                    "idx": int(idx),
-                    "score": float(score),
-                    "filename": md["filename"],
-                    "section_title": md.get("section_title"),
-                    "section_idx": md.get("section_idx"),
-                    "chunk_id": md.get("chunk_id"),
-                    "text": md.get("text")
-                })
+                {Array.isArray(m.content) ? (
+                  <>
+                    {/* Tabs */}
+                    <div className="flex space-x-2 mb-2">
+                      {m.content.map((_, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setActiveTab(idx)}
+                          className={`px-3 py-1 rounded-xl text-sm ${
+                            activeTab === idx
+                              ? "bg-blue-600 text-white"
+                              : "bg-gray-200 text-gray-700"
+                          }`}
+                        >
+                          Απάντηση {idx + 1}
+                        </button>
+                      ))}
+                    </div>
 
-        if not results:
-            return {"answer": "Δεν βρέθηκε σχετική απάντηση.", "source": None, "query": question}
+                    {/* Active answer */}
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      linkTarget="_blank"
+                      components={{
+                        a: ({ node, href, children, ...props }) => (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: "blue" }}
+                            {...props}
+                          >
+                            {children}
+                          </a>
+                        ),
+                      }}
+                      className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed"
+                    >
+                      {m.content[activeTab]}
+                    </ReactMarkdown>
+                  </>
+                ) : (
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    linkTarget="_blank"
+                    components={{
+                      a: ({ node, href, children, ...props }) => (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: "blue" }}
+                          {...props}
+                        >
+                          {children}
+                        </a>
+                      ),
+                    }}
+                    className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed"
+                  >
+                    {m.content}
+                  </ReactMarkdown>
+                )}
+              </div>
+            </div>
+          ))}
 
-        # 🔹 Συγχώνευση chunks ανά ενότητα
-        merged_by_section = {}
-        for r in results:
-            key = (r["filename"], r.get("section_idx"))
-            merged_by_section.setdefault(key, {"chunks": [], "scores": []})
-            merged_by_section[key]["chunks"].append((r["chunk_id"], r["text"]))
-            merged_by_section[key]["scores"].append(r["score"])
+          {loading && (
+            <div className="flex justify-start">
+              <div className="bg-gray-100 p-3 rounded-2xl rounded-bl-none shadow-sm text-gray-500 italic">
+                ✨ Η ASTbooks σκέφτεται...
+              </div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
 
-        merged_list = []
-        for (fname, sidx), val in merged_by_section.items():
-            sorted_chunks = [t for _, t in sorted(val["chunks"], key=lambda x: x[0])]
-            joined = "\n\n".join(sorted_chunks)
-            avg_score = float(sum(val["scores"]) / len(val["scores"]))
-            merged_list.append({
-                "filename": fname,
-                "section_idx": sidx,
-                "text": joined,
-                "score": avg_score,
-                "chunk_id": val["chunks"][0][0] if val["chunks"] else 0
-            })
-
-        merged_list = sorted(merged_list, key=lambda x: x["score"], reverse=True)
-        best = merged_list[0]
-
-        # ✨ Καθάρισμα κειμένου
-        answer_text = clean_text(best["text"])
-
-        # ✨ Προσθήκη πηγής στο τέλος
-        answer_text += f"\n\n📄 Πηγή: {best['filename']}"
-
-        MAX_CHARS = 4000
-        if len(answer_text) > MAX_CHARS:
-            answer_text = answer_text[:MAX_CHARS].rsplit(' ', 1)[0] + " ..."
-
-        return {
-            "answer": answer_text,
-            "query": question
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        <div className="border-t border-gray-200 p-4 flex items-center bg-gray-50">
+          <input
+            type="text"
+            placeholder="Γράψε την ερώτησή σου..."
+            className="flex-1 border border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyPress}
+          />
+          <button
+            onClick={sendMessage}
+            disabled={loading}
+            className="ml-3 px-5 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition disabled:opacity-50"
+          >
+            Αποστολή
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
