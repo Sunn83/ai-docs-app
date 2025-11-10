@@ -115,6 +115,7 @@ export default function ChatClient() {
                 )}
 
                 {/* Active answer */}
+                <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
@@ -130,10 +131,10 @@ export default function ChatClient() {
                       </a>
                     ),
                   }}
-                  className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed"
                 >
                   {m.content[m.activeTab]}
                 </ReactMarkdown>
+                  </div>
               </div>
             </div>
           ))}
