@@ -4,19 +4,15 @@ import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-type Message = {
-  role: "user" | "assistant";
-  content: string[]; // Πολλαπλές απαντήσεις
-  activeTab: number; // Ενεργό tab ανά μήνυμα
-};
-
 export default function ChatClient() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<
+    { role: "user" | "assistant" | "ASTbooks"; content: string }[]
+  >([]);
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Scroll στο κάτω μέρος όταν προστίθενται μηνύματα
+  // Scroll to bottom on new message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -24,33 +20,31 @@ export default function ChatClient() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
-    const userMessage: Message = { role: "user", content: [input], activeTab: 0 };
+    const userMessage = { role: "user" as const, content: input };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setLoading(true);
 
     try {
-      const res = await fetch("/api/ask", {
+      const response = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: input }),
       });
 
-      const data = await res.json();
-
-      const answers: string[] =
-        data.answers?.map((a: any) => a.answer) || ["⚠️ Δεν βρέθηκαν απαντήσεις."];
-
-      const botMessage: Message = { role: "assistant", content: answers, activeTab: 0 };
-      setMessages((prev) => [...prev, botMessage]);
-    } catch (err) {
-      console.error("Error:", err);
-      const botMessage: Message = {
-        role: "assistant",
-        content: ["⚠️ Σφάλμα κατά τη λήψη απάντησης."],
-        activeTab: 0,
+      const data = await response.json();
+      const botMessage = {
+        role: "assistant" as const,
+        content: data.answer || "⚠️ Δεν βρέθηκε απάντηση.",
       };
+
       setMessages((prev) => [...prev, botMessage]);
+    } catch (error) {
+      console.error("Error:", error);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant" as const, content: "⚠️ Σφάλμα κατά τη λήψη απάντησης." },
+      ]);
     } finally {
       setLoading(false);
     }
@@ -63,20 +57,12 @@ export default function ChatClient() {
     }
   };
 
-  const setTab = (msgIndex: number, tabIndex: number) => {
-    setMessages((prev) =>
-      prev.map((m, i) =>
-        i === msgIndex ? { ...m, activeTab: tabIndex } : m
-      )
-    );
-  };
-
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-6">
       <div className="w-full max-w-2xl bg-white shadow-lg rounded-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-500 text-white p-4 font-semibold text-lg flex items-center justify-center">
-          💼 ASTbooks — Έξυπνος Βοηθός - Υπό Κατασκευή
+          💼 ASTbooks — Έξυπνος Βοηθός
         </div>
 
         {/* Messages */}
@@ -84,7 +70,9 @@ export default function ChatClient() {
           {messages.map((m, i) => (
             <div
               key={i}
-              className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+              className={`flex ${
+                m.role === "user" ? "justify-end" : "justify-start"
+              }`}
             >
               <div
                 className={`max-w-[80%] p-3 rounded-2xl shadow-sm whitespace-pre-line ${
@@ -96,47 +84,32 @@ export default function ChatClient() {
                 <strong className="block mb-1 text-sm opacity-70">
                   {m.role === "user" ? "Εσύ" : "ASTbooks"}
                 </strong>
-
-                {/* Tabs αν υπάρχουν >1 απαντήσεις */}
-                {m.content.length > 1 && (
-                  <div className="flex space-x-2 mb-2">
-                    {m.content.map((_, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setTab(i, idx)}
-                        className={`px-3 py-1 rounded-xl text-sm ${
-                          m.activeTab === idx
-                            ? "bg-blue-600 text-white"
-                            : "bg-gray-200 text-gray-700"
-                        }`}
-                      >
-                        Απάντηση {idx + 1}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Active answer */}
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  linkTarget="_blank"
-                  components={{
-                    a: ({ node, href, children, ...props }) => (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: "blue" }}
-                        {...props}
-                      >
-                        {children}
-                      </a>
-                    ),
-                  }}
-                  className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed"
-                >
-                  {m.content[m.activeTab]}
-                </ReactMarkdown>
+                <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      table: ({ node, ...props }) => (
+                        <div className="overflow-x-auto my-4">
+                          <table
+                            className="table-auto border-collapse border border-gray-400 w-full text-sm"
+                            {...props}
+                          />
+                        </div>
+                      ),
+                      th: ({ node, ...props }) => (
+                        <th
+                          className="border border-gray-400 bg-gray-100 px-2 py-1 text-left"
+                          {...props}
+                        />
+                      ),
+                      td: ({ node, ...props }) => (
+                        <td className="border border-gray-400 px-2 py-1 align-top" {...props} />
+                      ),
+                    }}
+                  >
+                    {m.content}
+                  </ReactMarkdown>
+                </div>
               </div>
             </div>
           ))}
@@ -148,6 +121,7 @@ export default function ChatClient() {
               </div>
             </div>
           )}
+
           <div ref={messagesEndRef} />
         </div>
 
