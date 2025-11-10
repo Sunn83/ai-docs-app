@@ -6,15 +6,15 @@ import remarkGfm from "remark-gfm";
 
 type Message = {
   role: "user" | "assistant";
-  content: string[]; // Κάθε απάντηση είναι string σε array
-  activeTab: number; // Active tab για multi-answer
+  content: string[]; // πάντα array για tabs
+  activeTab: number; // ποιο tab εμφανίζεται
 };
 
 export default function ChatClient() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -23,8 +23,9 @@ export default function ChatClient() {
   const sendMessage = async () => {
     if (!input.trim()) return;
 
+    // Προσθήκη μηνύματος χρήστη
     const userMessage: Message = { role: "user", content: [input], activeTab: 0 };
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMessage]);
     setInput("");
     setLoading(true);
 
@@ -36,20 +37,20 @@ export default function ChatClient() {
       });
 
       const data = await res.json();
-
-      const answers =
-        data.answers?.map((a: any) => a.answer) || ["⚠️ Δεν βρέθηκαν απαντήσεις."];
+      const answers: string[] = data.answers?.map((a: any) => a.answer) || [
+        "⚠️ Δεν βρέθηκαν απαντήσεις."
+      ];
 
       const botMessage: Message = { role: "assistant", content: answers, activeTab: 0 };
-      setMessages((prev) => [...prev, botMessage]);
+      setMessages(prev => [...prev, botMessage]);
     } catch (err) {
-      console.error("Error:", err);
+      console.error(err);
       const botMessage: Message = {
         role: "assistant",
         content: ["⚠️ Σφάλμα κατά τη λήψη απάντησης."],
         activeTab: 0,
       };
-      setMessages((prev) => [...prev, botMessage]);
+      setMessages(prev => [...prev, botMessage]);
     } finally {
       setLoading(false);
     }
@@ -63,10 +64,8 @@ export default function ChatClient() {
   };
 
   const setTab = (msgIndex: number, tabIndex: number) => {
-    setMessages((prev) =>
-      prev.map((m, i) =>
-        i === msgIndex ? { ...m, activeTab: tabIndex } : m
-      )
+    setMessages(prev =>
+      prev.map((m, i) => (i === msgIndex ? { ...m, activeTab: tabIndex } : m))
     );
   };
 
@@ -96,7 +95,7 @@ export default function ChatClient() {
                   {m.role === "user" ? "Εσύ" : "ASTbooks"}
                 </strong>
 
-                {/* Tabs αν υπάρχει >1 απάντηση */}
+                {/* Tabs */}
                 {m.content.length > 1 && (
                   <div className="flex space-x-2 mb-2">
                     {m.content.map((_, idx) => (
@@ -116,26 +115,24 @@ export default function ChatClient() {
                 )}
 
                 {/* Active answer */}
-                <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      a: ({ node, href, children, ...props }) => (
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ color: "blue" }}
-                          {...props}
-                        >
-                          {children}
-                        </a>
-                      ),
-                    }}
-                  >
-                    {m.content[m.activeTab]}
-                  </ReactMarkdown>
-                </div>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    a: ({ node, href, children, ...props }) => (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: "blue" }}
+                        {...props}
+                      >
+                        {children}
+                      </a>
+                    ),
+                  }}
+                >
+                  {m.content[m.activeTab]}
+                </ReactMarkdown>
               </div>
             </div>
           ))}
@@ -147,7 +144,6 @@ export default function ChatClient() {
               </div>
             </div>
           )}
-
           <div ref={messagesEndRef} />
         </div>
 
@@ -164,4 +160,12 @@ export default function ChatClient() {
           <button
             onClick={sendMessage}
             disabled={loading}
-            className="ml-3 px-5 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition disabled:opacity-50
+            className="ml-3 px-5 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition disabled:opacity-50"
+          >
+            Αποστολή
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
