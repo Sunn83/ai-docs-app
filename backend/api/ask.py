@@ -75,7 +75,8 @@ def ask(query: Query):
         for r in top_results:
             answer_text = clean_text(r["text"])
             filename_pdf = re.sub(r'\.docx?$', '.pdf', r["filename"], flags=re.IGNORECASE)
-            encoded_filename = quote(r["filename"])
+            # encoded_filename = quote(r["filename"])
+            encoded_filename = quote(filename_pdf)
             pdf_url = f"{PDF_BASE_URL}/{encoded_filename}#page={r['page']}"
 
             formatted = (
