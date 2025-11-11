@@ -234,9 +234,19 @@ def load_docs(cache):
                 })
                 all_chunks.append(chunk)
 
+    # 🔹 Καθαρισμός metadata από αρχεία που δεν υπάρχουν πια
+    removed_files = set(cached_hashes.keys()) - set(new_hashes.keys())
+    if removed_files:
+        print(f"🗑 Αρχεία που διαγράφηκαν και αφαιρούνται από το index: {removed_files}")
+        if os.path.exists(META_FILE):
+            with open(META_FILE, "r", encoding="utf-8") as f:
+                old_metadata = json.load(f)
+            old_metadata = [m for m in old_metadata if m["filename"] not in removed_files]
+            with open(META_FILE, "w", encoding="utf-8") as f:
+                json.dump(old_metadata, f, ensure_ascii=False, indent=2)
+
     cache["file_hashes"] = new_hashes
     return all_chunks, metadata, cache
-
 
 # ---------------------------------------------------
 # 🔹 Δημιουργία FAISS index
