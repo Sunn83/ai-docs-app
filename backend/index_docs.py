@@ -1,27 +1,28 @@
 import os
 import json
-import re
+import hashlib
 import subprocess
-import argparse
+import re
 from pathlib import Path
 from docx import Document
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import faiss
-import fitz
+import fitz  # PyMuPDF
 
 DATA_DIR = "/data"
 DOCS_PATH = os.path.join(DATA_DIR, "docs")
 PDF_PATH = os.path.join(DATA_DIR, "pdfs")
 INDEX_FILE = os.path.join(DATA_DIR, "faiss.index")
 META_FILE = os.path.join(DATA_DIR, "docs_meta.json")
+CACHE_FILE = os.path.join(DATA_DIR, "cache_info.json")
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 150
 
 
 # ---------------------------------------------------
-# 🔹 Helper: Πίνακες σε Markdown
+# 🔹 Helper για πίνακες σε Markdown
 # ---------------------------------------------------
 def table_to_markdown(table, wrap_length=90):
     def wrap_text(text, max_length=wrap_length):
@@ -41,8 +42,7 @@ def table_to_markdown(table, wrap_length=90):
     for row in table.rows:
         cells = []
         for cell in row.cells:
-            text = cell.text.strip()
-            text = text.replace("\u00A0", " ").replace("\r", "").replace("\n", " ")
+            text = cell.text.strip().replace("\u00A0", " ").replace("\r", "").replace("\n", " ")
             text = wrap_text(text)
             cells.append(text)
         rows_text.append(" | ".join(cells))
@@ -52,16 +52,18 @@ def table_to_markdown(table, wrap_length=90):
 
     num_cols = rows_text[0].count("|") + 1
     separator = " | ".join(["---"] * num_cols)
+    return "\n".join(["", "📊 Πίνακας:", rows_text[0], separator, *rows_text[1:], ""])
 
-    markdown_table = "\n".join([
-        "",
-        "📊 Πίνακας:",
-        rows_text[0],
-        separator,
-        *rows_text[1:],
-        ""
-    ])
-    return markdown_table
+
+# ---------------------------------------------------
+# 🔹 Υπολογισμός hash για caching
+# ---------------------------------------------------
+def file_hash(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(8192):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 # ---------------------------------------------------
@@ -74,33 +76,26 @@ def read_docx_sections(filepath):
     from docx.table import Table
 
     doc = Document(filepath)
-    sections = []
+    sections, current_body = [], []
     current_title = None
-    current_body = []
 
     def get_paragraph_text_with_breaks(paragraph):
         parts = []
         for run in paragraph.runs:
             if run.text:
                 parts.append(run.text)
-            for br in run._element.findall(".//w:br", namespaces=run._element.nsmap):
+            for _ in run._element.findall(".//w:br", namespaces=run._element.nsmap):
                 parts.append("\n")
-        text = "".join(parts)
-        text = text.replace("\u00A0", " ").replace("\r", "").strip()
-        return text
+        return "".join(parts).replace("\u00A0", " ").replace("\r", "").strip()
 
     def flush_section():
         nonlocal current_title, current_body
-        if not current_title and not current_body:
+        if not current_body:
             return
         text = "\n\n".join([t.strip() for t in current_body if t.strip()])
-        if text.strip():
-            sections.append({
-                "title": current_title.strip() if current_title else None,
-                "text": text.strip()
-            })
-        current_title = None
-        current_body = []
+        if text:
+            sections.append({"title": current_title.strip() if current_title else None, "text": text})
+        current_title, current_body = None, []
 
     for child in doc.element.body:
         if isinstance(child, CT_P):
@@ -108,41 +103,29 @@ def read_docx_sections(filepath):
             txt = get_paragraph_text_with_breaks(paragraph)
             if not txt:
                 continue
-            style = ""
-            try:
-                style = paragraph.style.name.lower()
-            except Exception:
-                pass
-            if style.startswith("heading") or "επικεφαλίδα" in style or re.match(r"^\s*(άρθρο|ενότητα|θέμα|\d+(\.\d+)+)", txt.lower()):
+            style = paragraph.style.name.lower() if paragraph.style else ""
+            if style.startswith("heading") or re.match(r"^\s*(άρθρο|ενότητα|θέμα|\d+(\.\d+)+)", txt.lower()):
                 flush_section()
                 current_title = txt
                 continue
             current_body.append(txt)
         elif isinstance(child, CT_Tbl):
             table = Table(child, doc)
-            table_md = table_to_markdown(table)
-            if table_md.strip():
-                current_body.append(table_md)
+            current_body.append(table_to_markdown(table))
 
     flush_section()
-
-    if not sections:
-        all_text = "\n".join([get_paragraph_text_with_breaks(p) for p in doc.paragraphs if p.text.strip()])
-        sections = [{"title": None, "text": all_text}]
-    return sections
+    return sections or [{"title": None, "text": "\n".join(p.text for p in doc.paragraphs if p.text.strip())}]
 
 
 # ---------------------------------------------------
 # 🔹 Σπάσιμο σε chunks
 # ---------------------------------------------------
-def chunk_section_text(section_text, max_words=500, overlap_words=100):
-    if not section_text:
+def chunk_section_text(text, max_words=500, overlap_words=100):
+    if not text:
         return []
-
-    parts = re.split(r'(?=📊 Πίνακας:)', section_text)
+    parts = re.split(r'(?=📊 Πίνακας:)', text)
     chunks = []
     prev_part = ""
-
     join_triggers = ["πίνακα", "πίνακας", "κάτωθι πίνακα", "παρακάτω πίνακα", "ακόλουθο πίνακα", "βλέπε πίνακα", "πίνακα:"]
 
     for part in parts:
@@ -152,16 +135,14 @@ def chunk_section_text(section_text, max_words=500, overlap_words=100):
 
         if part.startswith("📊 Πίνακας:"):
             if prev_part and any(trig in prev_part.lower() for trig in join_triggers):
-                prev_part = prev_part.rstrip() + "\n\n" + part.strip()
-                chunks[-1] = prev_part
+                chunks[-1] = chunks[-1].rstrip() + "\n\n" + part
                 prev_part = ""
             else:
                 chunks.append(part)
             continue
 
-        sentences = re.split(r'(?<=[\.\!\?])\s+', part)
+        sentences = re.split(r'(?<=[.!?])\s+', part)
         cur, cur_count = [], 0
-
         for s in sentences:
             wcount = len(s.split())
             if cur_count + wcount > max_words and cur:
@@ -173,185 +154,134 @@ def chunk_section_text(section_text, max_words=500, overlap_words=100):
             else:
                 cur.append(s)
                 cur_count += wcount
-
         if cur:
             joined = " ".join(cur).strip()
             chunks.append(joined)
             prev_part = joined
 
-    chunks = [c for c in chunks if len(c.split()) > 5]
-    return chunks
+    return [c for c in chunks if len(c.split()) > 5]
 
 
 # ---------------------------------------------------
-# 🔹 DOCX → PDF (LibreOffice)
+# 🔹 Μετατροπή DOCX → PDF
 # ---------------------------------------------------
 def convert_to_pdf(docx_path, pdf_dir):
     os.makedirs(pdf_dir, exist_ok=True)
-    pdf_file = os.path.join(pdf_dir, os.path.splitext(os.path.basename(docx_path))[0] + ".pdf")
-
+    pdf_file = os.path.join(pdf_dir, Path(docx_path).stem + ".pdf")
     if not os.path.exists(pdf_file):
         print(f"⚙️ Μετατροπή σε PDF: {os.path.basename(docx_path)} ...")
-        try:
-            subprocess.run([
-                "libreoffice", "--headless", "--convert-to", "pdf",
-                "--outdir", pdf_dir, docx_path
-            ], check=True)
-        except Exception as e:
-            print(f"❌ Σφάλμα στη μετατροπή σε PDF: {e}")
-    else:
-        print(f"📄 Υπάρχει ήδη PDF για {os.path.basename(docx_path)}")
-
+        subprocess.run(["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", pdf_dir, docx_path], check=True)
     return pdf_file
 
 
 # ---------------------------------------------------
-# 🔹 Εύρεση σελίδας για κομμάτι κειμένου
+# 🔹 Βρίσκει σελίδα στο PDF
 # ---------------------------------------------------
-def get_page_for_text(pdf_path, text_snippet):
+def get_page_for_text(pdf_path, text_snippet, cache):
+    if pdf_path in cache:
+        for snippet, page in cache[pdf_path].items():
+            if snippet == text_snippet[:150]:
+                return page
     try:
         doc = fitz.open(pdf_path)
-        snippet = text_snippet[:1000]
+        snippet = text_snippet[:150]
         for page_num, page in enumerate(doc, start=1):
-            if snippet[:40].strip() in page.get_text("text"):
+            if snippet in page.get_text("text"):
+                cache.setdefault(pdf_path, {})[snippet] = page_num
                 return page_num
         return 1
-    except Exception as e:
-        print(f"⚠️ Δεν βρέθηκε σελίδα για {os.path.basename(pdf_path)}: {e}")
+    except Exception:
         return 1
 
 
 # ---------------------------------------------------
-# 🔹 Διαβάζει DOCX & δημιουργεί metadata
+# 🔹 Φόρτωση DOCX με caching
 # ---------------------------------------------------
-def load_docs():
+def load_docs(cache):
     metadata, all_chunks = [], []
+    os.makedirs(DATA_DIR, exist_ok=True)
     doc_files = [f for f in os.listdir(DOCS_PATH) if f.lower().endswith(".docx")]
-    print(f"Συνολικά {len(doc_files)} αρχεία προς επεξεργασία.")
+    print(f"🔎 Εντοπίστηκαν {len(doc_files)} αρχεία DOCX")
 
-    for i, fname in enumerate(doc_files, start=1):
-        print(f"📘 ({i}/{len(doc_files)}) Διαβάζω: {fname} ...")
+    cached_hashes = cache.get("file_hashes", {})
+    new_hashes = {}
+
+    for fname in doc_files:
         path = os.path.join(DOCS_PATH, fname)
+        filehash = file_hash(path)
+        new_hashes[fname] = filehash
         pdf_path = convert_to_pdf(path, PDF_PATH)
 
+        # Skip αν δεν έχει αλλάξει
+        if cached_hashes.get(fname) == filehash:
+            print(f"⏩ Παράκαμψη (χωρίς αλλαγές): {fname}")
+            continue
+
+        print(f"📘 Επεξεργασία: {fname}")
         sections = read_docx_sections(path)
         for si, sec in enumerate(sections):
-            sec_title = sec.get("title")
-            sec_text = sec.get("text") or ""
-            chunks = chunk_section_text(sec_text, max_words=CHUNK_SIZE, overlap_words=CHUNK_OVERLAP)
-            if not chunks and sec_text.strip():
-                chunks = [sec_text.strip()]
+            chunks = chunk_section_text(sec["text"], max_words=CHUNK_SIZE, overlap_words=CHUNK_OVERLAP)
             for cj, chunk in enumerate(chunks):
-                page = get_page_for_text(pdf_path, chunk)
+                page = get_page_for_text(pdf_path, chunk, cache.get("page_cache", {}))
                 metadata.append({
                     "filename": fname,
                     "pdf_path": pdf_path,
-                    "section_title": sec_title,
+                    "section_title": sec.get("title"),
                     "section_idx": si,
                     "chunk_id": cj,
                     "page": page,
                     "text": chunk
                 })
                 all_chunks.append(chunk)
-        print(f"✅ Ολοκληρώθηκε: {fname} ({len(sections)} ενότητες).")
 
-    return all_chunks, metadata
+    cache["file_hashes"] = new_hashes
+    return all_chunks, metadata, cache
 
 
 # ---------------------------------------------------
-# 🔹 FAISS βοηθητικά
+# 🔹 Δημιουργία FAISS index
 # ---------------------------------------------------
 def create_faiss_index(embeddings):
     faiss.normalize_L2(embeddings)
-    dim = embeddings.shape[1]
-    index = faiss.IndexFlatIP(dim)
+    index = faiss.IndexFlatIP(embeddings.shape[1])
     index.add(embeddings)
     return index
-
-
-def rebuild_index(chunks, metadata):
-    print("🧠 Δημιουργία ΝΕΟΥ index από την αρχή...")
-    model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
-    embeddings = model.encode([f"passage: {c}" for c in chunks], convert_to_numpy=True, show_progress_bar=True).astype('float32')
-    index = create_faiss_index(embeddings)
-    faiss.write_index(index, INDEX_FILE)
-    with open(META_FILE, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, ensure_ascii=False, indent=2)
-    print("✅ Νέο index δημιουργήθηκε επιτυχώς!")
-
-
-def append_to_index(new_files, metadata):
-    with open(META_FILE, "r", encoding="utf-8") as f:
-        old_meta = json.load(f)
-    index = faiss.read_index(INDEX_FILE)
-    model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
-
-    new_meta = [m for m in metadata if m["filename"] in new_files]
-    chunks = [m["text"] for m in new_meta]
-
-    if not chunks:
-        print("ℹ️ Δεν υπάρχουν νέα κομμάτια για προσθήκη.")
-        return
-
-    embeddings = model.encode([f"passage: {c}" for c in chunks], convert_to_numpy=True, show_progress_bar=True).astype('float32')
-    faiss.normalize_L2(embeddings)
-    index.add(embeddings)
-    faiss.write_index(index, INDEX_FILE)
-
-    merged_meta = old_meta + new_meta
-    with open(META_FILE, "w", encoding="utf-8") as f:
-        json.dump(merged_meta, f, ensure_ascii=False, indent=2)
-
-    print(f"✅ Προστέθηκαν {len(new_meta)} νέα κομμάτια στο index.")
-
-
-def remove_deleted_files(removed_files):
-    """Αφαιρεί metadata για αρχεία που διαγράφηκαν."""
-    if not removed_files:
-        return
-    print(f"🧹 Καθαρισμός index από {len(removed_files)} διαγραμμένα αρχεία...")
-    with open(META_FILE, "r", encoding="utf-8") as f:
-        metadata = json.load(f)
-    new_meta = [m for m in metadata if m["filename"] not in removed_files]
-    with open(META_FILE, "w", encoding="utf-8") as f:
-        json.dump(new_meta, f, ensure_ascii=False, indent=2)
-    print("✅ Διαγράφηκαν από το meta.json.")
-    print("⚠️ Το FAISS index δεν μπορεί να αφαιρέσει vectors — για πλήρη καθαρισμό, τρέξε με --rebuild.")
 
 
 # ---------------------------------------------------
 # 🔹 Main
 # ---------------------------------------------------
 def main():
+    import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--rebuild", action="store_true", help="Κάνει ολικό rebuild του index")
+    parser.add_argument("--rebuild", action="store_true", help="Πλήρες indexing όλων των αρχείων")
     args = parser.parse_args()
 
-    old_metadata = []
-    if os.path.exists(META_FILE) and os.path.exists(INDEX_FILE):
-        with open(META_FILE, "r", encoding="utf-8") as f:
-            old_metadata = json.load(f)
-        old_files = {m["filename"] for m in old_metadata}
-    else:
-        old_files = set()
+    cache = {}
+    if os.path.exists(CACHE_FILE) and not args.rebuild:
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            cache = json.load(f)
 
-    chunks, metadata = load_docs()
-    current_files = {m["filename"] for m in metadata}
-    new_files = current_files - old_files
-    removed_files = old_files - current_files
+    print("🔍 Εκκίνηση indexing...")
+    chunks, metadata, cache = load_docs(cache)
 
-    print(f"🆕 Νέα αρχεία: {len(new_files)}")
-    print(f"🗑️  Διαγραμμένα αρχεία: {len(removed_files)}")
+    if not chunks:
+        print("✅ Δεν υπάρχουν νέα ή τροποποιημένα αρχεία. Τίποτα προς ενημέρωση.")
+        return
 
-    if args.rebuild or not old_metadata:
-        rebuild_index(chunks, metadata)
-    else:
-        if new_files:
-            append_to_index(new_files, metadata)
-        if removed_files:
-            remove_deleted_files(removed_files)
-        if not new_files and not removed_files:
-            print("✅ Δεν υπάρχουν αλλαγές — το index είναι ενημερωμένο.")
+    print(f"➡️ {len(chunks)} νέα chunks προς επεξεργασία.")
+    model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
+    embeddings = model.encode([f"passage: {c}" for c in chunks], convert_to_numpy=True, show_progress_bar=True)
+    embeddings = embeddings.astype("float32")
+
+    index = create_faiss_index(embeddings)
+    faiss.write_index(index, INDEX_FILE)
+    with open(META_FILE, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(cache, f, ensure_ascii=False, indent=2)
+
+    print("✅ Indexing ολοκληρώθηκε επιτυχώς!")
 
 
 if __name__ == "__main__":
