@@ -1,42 +1,35 @@
 import os
 import json
 import hashlib
-import subprocess
-import re
+import argparse
 from pathlib import Path
 from docx import Document
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import faiss
+import re
+import subprocess
 import fitz
-import argparse
 
-# --------------------------
-# Paths & Constants
-# --------------------------
+# -------------------- Config --------------------
 DATA_DIR = "/data"
 DOCS_PATH = os.path.join(DATA_DIR, "docs")
 PDF_PATH = os.path.join(DATA_DIR, "pdfs")
 INDEX_FILE = os.path.join(DATA_DIR, "faiss.index")
 META_FILE = os.path.join(DATA_DIR, "docs_meta.json")
-CACHE_FILE = os.path.join(DATA_DIR, "index_cache.json")  # για caching
+CACHE_FILE = os.path.join(DATA_DIR, "index_cache.json")
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 150
 
-# --------------------------
-# Helper: Hash αρχείου
-# --------------------------
-def file_hash(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
+# -------------------- Helpers --------------------
+def get_file_hash(filepath):
+    h = hashlib.sha1()
+    with open(filepath, "rb") as f:
         while chunk := f.read(8192):
             h.update(chunk)
     return h.hexdigest()
 
-# --------------------------
-# Helper για πίνακες σε Markdown
-# --------------------------
 def table_to_markdown(table, wrap_length=90):
     def wrap_text(text, max_length=wrap_length):
         words = text.split()
@@ -55,7 +48,8 @@ def table_to_markdown(table, wrap_length=90):
     for row in table.rows:
         cells = []
         for cell in row.cells:
-            text = cell.text.strip().replace("\u00A0", " ").replace("\r", "").replace("\n", " ")
+            text = cell.text.strip()
+            text = text.replace("\u00A0", " ").replace("\r", "").replace("\n", " ")
             text = wrap_text(text)
             cells.append(text)
         rows_text.append(" | ".join(cells))
@@ -65,7 +59,6 @@ def table_to_markdown(table, wrap_length=90):
 
     num_cols = rows_text[0].count("|") + 1
     separator = " | ".join(["---"] * num_cols)
-
     markdown_table = "\n".join([
         "",
         "📊 Πίνακας:",
@@ -76,9 +69,6 @@ def table_to_markdown(table, wrap_length=90):
     ])
     return markdown_table
 
-# --------------------------
-# Διαβάζει sections από DOCX
-# --------------------------
 def read_docx_sections(filepath):
     from docx.oxml.text.paragraph import CT_P
     from docx.oxml.table import CT_Tbl
@@ -106,10 +96,7 @@ def read_docx_sections(filepath):
             return
         text = "\n\n".join([t.strip() for t in current_body if t.strip()])
         if text.strip():
-            sections.append({
-                "title": current_title.strip() if current_title else None,
-                "text": text.strip()
-            })
+            sections.append({"title": current_title.strip() if current_title else None, "text": text.strip()})
         current_title = None
         current_body = []
 
@@ -136,19 +123,14 @@ def read_docx_sections(filepath):
                 current_body.append(table_md)
 
     flush_section()
-
     if not sections:
         all_text = "\n".join([get_paragraph_text_with_breaks(p) for p in doc.paragraphs if p.text.strip()])
         sections = [{"title": None, "text": all_text}]
     return sections
 
-# --------------------------
-# Σπάσιμο σε chunks
-# --------------------------
 def chunk_section_text(section_text, max_words=500, overlap_words=100):
     if not section_text:
         return []
-
     parts = re.split(r'(?=📊 Πίνακας:)', section_text)
     chunks = []
     prev_part = ""
@@ -158,7 +140,6 @@ def chunk_section_text(section_text, max_words=500, overlap_words=100):
         part = part.strip()
         if not part:
             continue
-
         if part.startswith("📊 Πίνακας:"):
             if prev_part and any(trig in prev_part.lower() for trig in join_triggers):
                 prev_part = prev_part.rstrip() + "\n\n" + part.strip()
@@ -167,7 +148,6 @@ def chunk_section_text(section_text, max_words=500, overlap_words=100):
             else:
                 chunks.append(part)
             continue
-
         sentences = re.split(r'(?<=[\.\!\?])\s+', part)
         cur, cur_count = [], 0
         for s in sentences:
@@ -185,17 +165,12 @@ def chunk_section_text(section_text, max_words=500, overlap_words=100):
             joined = " ".join(cur).strip()
             chunks.append(joined)
             prev_part = joined
-
     chunks = [c for c in chunks if len(c.split()) > 5]
     return chunks
 
-# --------------------------
-# Μετατροπή DOCX → PDF
-# --------------------------
 def convert_to_pdf(docx_path, pdf_dir):
     os.makedirs(pdf_dir, exist_ok=True)
     pdf_file = os.path.join(pdf_dir, os.path.splitext(os.path.basename(docx_path))[0] + ".pdf")
-
     if not os.path.exists(pdf_file):
         print(f"⚙️ Μετατροπή σε PDF: {os.path.basename(docx_path)} ...")
         try:
@@ -209,86 +184,62 @@ def convert_to_pdf(docx_path, pdf_dir):
         print(f"📄 Υπάρχει ήδη PDF για {os.path.basename(docx_path)}")
     return pdf_file
 
-# --------------------------
-# Βρίσκει σελίδα στο PDF
-# --------------------------
-def get_page_for_text(pdf_path, text_snippet, page_cache):
-    # χρησιμοποιεί cache αν υπάρχει
-    snippet = text_snippet[:1000]
-    key = hashlib.sha256(snippet.encode("utf-8")).hexdigest()
-    if pdf_path in page_cache and key in page_cache[pdf_path]:
-        return page_cache[pdf_path][key]
-
+def get_page_for_text(pdf_path, text_snippet, page_cache=None, chunk_id=None):
+    if page_cache is not None and chunk_id in page_cache:
+        return page_cache[chunk_id]
     try:
         doc = fitz.open(pdf_path)
+        snippet = text_snippet[:1000]
         for page_num, page in enumerate(doc, start=1):
             if snippet[:40].strip() in page.get_text("text"):
-                page_cache.setdefault(pdf_path, {})[key] = page_num
                 return page_num
-        page_cache.setdefault(pdf_path, {})[key] = 1
         return 1
     except Exception as e:
         print(f"⚠️ Δεν βρέθηκε σελίδα για {os.path.basename(pdf_path)}: {e}")
-        page_cache.setdefault(pdf_path, {})[key] = 1
         return 1
 
-# --------------------------
-# Φόρτωση και caching index
-# --------------------------
 def load_docs(rebuild=False):
-    # Φόρτωση προηγούμενου metadata & cache
-    if os.path.exists(META_FILE):
-        with open(META_FILE, "r", encoding="utf-8") as f:
-            metadata = json.load(f)
-    else:
-        metadata = []
+    metadata, all_chunks = [], []
 
+    os.makedirs(PDF_PATH, exist_ok=True)
+
+    # Load cache
+    cache = {}
     if os.path.exists(CACHE_FILE):
         with open(CACHE_FILE, "r", encoding="utf-8") as f:
-            cache_data = json.load(f)
-    else:
-        cache_data = {}
+            cache = json.load(f)
 
-    page_cache = cache_data.get("pages", {})
-    file_cache = cache_data.get("files", {})
+    # Track existing files to remove deleted ones
+    existing_files = [f for f in os.listdir(DOCS_PATH) if f.lower().endswith(".docx")]
+    deleted_files = [f for f in cache.keys() if f not in existing_files]
+    for f in deleted_files:
+        print(f"🗑️ Αφαιρέθηκε: {f} → διαγράφονται chunks και PDF")
+        # Remove PDF
+        pdf_file = os.path.join(PDF_PATH, os.path.splitext(f)[0]+".pdf")
+        if os.path.exists(pdf_file):
+            os.remove(pdf_file)
+        # Remove cache entry
+        cache.pop(f, None)
 
-    all_chunks = []
-
-    # Λίστα αρχεία DOCX
-    doc_files = [f for f in os.listdir(DOCS_PATH) if f.lower().endswith(".docx")]
-    print(f"Συνολικά {len(doc_files)} αρχεία προς επεξεργασία.")
-
-    # --------------------------
-    # Διαγραφή metadata για αρχεία που αφαιρέθηκαν
-    # --------------------------
-    existing_filenames = set(doc_files)
-    metadata = [m for m in metadata if m["filename"] in existing_filenames]
-    for cached_file in list(file_cache.keys()):
-        if cached_file not in existing_filenames:
-            file_cache.pop(cached_file)
-            page_cache.pop(os.path.join(PDF_PATH, os.path.splitext(cached_file)[0]+".pdf"), None)
-            pdf_to_delete = os.path.join(PDF_PATH, os.path.splitext(cached_file)[0]+".pdf")
-            if os.path.exists(pdf_to_delete):
-                os.remove(pdf_to_delete)
-                print(f"🗑️ Διαγράφηκε PDF για {cached_file}")
-
-    # --------------------------
-    # Διαδικασία αρχεία
-    # --------------------------
-    for fname in doc_files:
+    for i, fname in enumerate(existing_files, start=1):
         path = os.path.join(DOCS_PATH, fname)
-        fhash = file_hash(path)
+        file_hash = get_file_hash(path)
 
-        if not rebuild and fname in file_cache and file_cache[fname]["hash"] == fhash:
-            print(f"⏭️ Skip, δεν άλλαξε: {fname}")
-            # ανασύρει chunks από metadata
-            chunks = [m["text"] for m in metadata if m["filename"] == fname]
-            all_chunks.extend(chunks)
+        # Check cache
+        skip_file = fname in cache and cache[fname]["hash"] == file_hash and not rebuild
+        if skip_file:
+            print(f"⏩ Παράλειψη (δεν άλλαξε): {fname}")
+            # load chunks and metadata from previous cache
+            for chunk_entry in cache[fname]["metadata"]:
+                metadata.append(chunk_entry)
+                all_chunks.append(chunk_entry["text"])
             continue
 
-        print(f"📘 Επεξεργασία: {fname}")
+        print(f"📘 ({i}/{len(existing_files)}) Επεξεργασία: {fname}")
         pdf_path = convert_to_pdf(path, PDF_PATH)
         sections = read_docx_sections(path)
+        file_cache = {"hash": file_hash, "pages": {}, "metadata": []}
+
         for si, sec in enumerate(sections):
             sec_title = sec.get("title")
             sec_text = sec.get("text") or ""
@@ -296,8 +247,9 @@ def load_docs(rebuild=False):
             if not chunks and sec_text.strip():
                 chunks = [sec_text.strip()]
             for cj, chunk in enumerate(chunks):
-                page = get_page_for_text(pdf_path, chunk, page_cache)
-                metadata.append({
+                page = get_page_for_text(pdf_path, chunk, file_cache["pages"], chunk_id=str(cj))
+                file_cache["pages"][str(cj)] = page
+                entry = {
                     "filename": fname,
                     "pdf_path": pdf_path,
                     "section_title": sec_title,
@@ -305,22 +257,20 @@ def load_docs(rebuild=False):
                     "chunk_id": cj,
                     "page": page,
                     "text": chunk
-                })
+                }
+                metadata.append(entry)
                 all_chunks.append(chunk)
-        # Update cache για αυτό το αρχείο
-        file_cache[fname] = {"hash": fhash, "chunks": len(chunks)}
+                file_cache["metadata"].append(entry)
+
+        cache[fname] = file_cache
+        print(f"✅ Ολοκληρώθηκε: {fname} ({len(sections)} ενότητες)")
 
     # Save cache
-    cache_data["files"] = file_cache
-    cache_data["pages"] = page_cache
     with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(cache_data, f, ensure_ascii=False, indent=2)
+        json.dump(cache, f, ensure_ascii=False, indent=2)
 
     return all_chunks, metadata
 
-# --------------------------
-# Δημιουργία FAISS
-# --------------------------
 def create_faiss_index(embeddings):
     faiss.normalize_L2(embeddings)
     dim = embeddings.shape[1]
@@ -328,12 +278,9 @@ def create_faiss_index(embeddings):
     index.add(embeddings)
     return index
 
-# --------------------------
-# Main
-# --------------------------
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--rebuild", action="store_true", help="Force full rebuild of index")
+    parser.add_argument("--rebuild", action="store_true", help="Ολικό rebuild index")
     args = parser.parse_args()
 
     chunks, metadata = load_docs(rebuild=args.rebuild)
