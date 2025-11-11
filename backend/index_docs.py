@@ -1,12 +1,14 @@
 import os
 import json
+import re
+import subprocess
+import argparse
 from pathlib import Path
 from docx import Document
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import faiss
-import re
-import subprocess
+import fitz
 
 DATA_DIR = "/data"
 DOCS_PATH = os.path.join(DATA_DIR, "docs")
@@ -17,8 +19,9 @@ META_FILE = os.path.join(DATA_DIR, "docs_meta.json")
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 150
 
+
 # ---------------------------------------------------
-# 🔹 1. Helper για πίνακες σε Markdown
+# 🔹 Helper: Πίνακες σε Markdown
 # ---------------------------------------------------
 def table_to_markdown(table, wrap_length=90):
     def wrap_text(text, max_length=wrap_length):
@@ -62,7 +65,7 @@ def table_to_markdown(table, wrap_length=90):
 
 
 # ---------------------------------------------------
-# 🔹 2. Διαβάζει sections από DOCX
+# 🔹 Διαβάζει sections από DOCX
 # ---------------------------------------------------
 def read_docx_sections(filepath):
     from docx.oxml.text.paragraph import CT_P
@@ -130,7 +133,7 @@ def read_docx_sections(filepath):
 
 
 # ---------------------------------------------------
-# 🔹 3. Σπάσιμο κειμένου σε chunks
+# 🔹 Σπάσιμο σε chunks
 # ---------------------------------------------------
 def chunk_section_text(section_text, max_words=500, overlap_words=100):
     if not section_text:
@@ -181,7 +184,7 @@ def chunk_section_text(section_text, max_words=500, overlap_words=100):
 
 
 # ---------------------------------------------------
-# 🔹 4. Μετατροπή DOCX → PDF (LibreOffice)
+# 🔹 DOCX → PDF (LibreOffice)
 # ---------------------------------------------------
 def convert_to_pdf(docx_path, pdf_dir):
     os.makedirs(pdf_dir, exist_ok=True)
@@ -203,19 +206,32 @@ def convert_to_pdf(docx_path, pdf_dir):
 
 
 # ---------------------------------------------------
-# 🔹 5. Φόρτωση όλων των DOCX
+# 🔹 Εύρεση σελίδας για κομμάτι κειμένου
+# ---------------------------------------------------
+def get_page_for_text(pdf_path, text_snippet):
+    try:
+        doc = fitz.open(pdf_path)
+        snippet = text_snippet[:1000]
+        for page_num, page in enumerate(doc, start=1):
+            if snippet[:40].strip() in page.get_text("text"):
+                return page_num
+        return 1
+    except Exception as e:
+        print(f"⚠️ Δεν βρέθηκε σελίδα για {os.path.basename(pdf_path)}: {e}")
+        return 1
+
+
+# ---------------------------------------------------
+# 🔹 Διαβάζει DOCX & δημιουργεί metadata
 # ---------------------------------------------------
 def load_docs():
     metadata, all_chunks = [], []
     doc_files = [f for f in os.listdir(DOCS_PATH) if f.lower().endswith(".docx")]
-    total_files = len(doc_files)
-    print(f"Συνολικά {total_files} αρχεία προς επεξεργασία.")
+    print(f"Συνολικά {len(doc_files)} αρχεία προς επεξεργασία.")
 
     for i, fname in enumerate(doc_files, start=1):
-        print(f"📘 ({i}/{total_files}) Διαβάζω: {fname} ...")
+        print(f"📘 ({i}/{len(doc_files)}) Διαβάζω: {fname} ...")
         path = os.path.join(DOCS_PATH, fname)
-
-        # ➕ Αυτόματη μετατροπή σε PDF (αν δεν υπάρχει)
         pdf_path = convert_to_pdf(path, PDF_PATH)
 
         sections = read_docx_sections(path)
@@ -226,21 +242,24 @@ def load_docs():
             if not chunks and sec_text.strip():
                 chunks = [sec_text.strip()]
             for cj, chunk in enumerate(chunks):
+                page = get_page_for_text(pdf_path, chunk)
                 metadata.append({
                     "filename": fname,
                     "pdf_path": pdf_path,
                     "section_title": sec_title,
                     "section_idx": si,
                     "chunk_id": cj,
+                    "page": page,
                     "text": chunk
                 })
                 all_chunks.append(chunk)
         print(f"✅ Ολοκληρώθηκε: {fname} ({len(sections)} ενότητες).")
+
     return all_chunks, metadata
 
 
 # ---------------------------------------------------
-# 🔹 6. Δημιουργία FAISS index
+# 🔹 FAISS βοηθητικά
 # ---------------------------------------------------
 def create_faiss_index(embeddings):
     faiss.normalize_L2(embeddings)
@@ -250,23 +269,89 @@ def create_faiss_index(embeddings):
     return index
 
 
-# ---------------------------------------------------
-# 🔹 7. Main
-# ---------------------------------------------------
-def main():
-    chunks, metadata = load_docs()
-    print(f"➡️  Βρέθηκαν {len(chunks)} chunks προς επεξεργασία.")
-    print("🔍 Φόρτωση μοντέλου embeddings...")
+def rebuild_index(chunks, metadata):
+    print("🧠 Δημιουργία ΝΕΟΥ index από την αρχή...")
     model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
-    print("🧠 Δημιουργία embeddings...")
-    embeddings = model.encode([f"passage: {c}" for c in chunks], convert_to_numpy=True, show_progress_bar=True)
-    embeddings = embeddings.astype('float32')
-    print("🔧 Κανονικοποίηση embeddings (L2) + δημιουργία FAISS index...")
+    embeddings = model.encode([f"passage: {c}" for c in chunks], convert_to_numpy=True, show_progress_bar=True).astype('float32')
     index = create_faiss_index(embeddings)
     faiss.write_index(index, INDEX_FILE)
     with open(META_FILE, "w", encoding="utf-8") as f:
         json.dump(metadata, f, ensure_ascii=False, indent=2)
-    print("✅ Indexing ολοκληρώθηκε επιτυχώς!")
+    print("✅ Νέο index δημιουργήθηκε επιτυχώς!")
+
+
+def append_to_index(new_files, metadata):
+    with open(META_FILE, "r", encoding="utf-8") as f:
+        old_meta = json.load(f)
+    index = faiss.read_index(INDEX_FILE)
+    model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
+
+    new_meta = [m for m in metadata if m["filename"] in new_files]
+    chunks = [m["text"] for m in new_meta]
+
+    if not chunks:
+        print("ℹ️ Δεν υπάρχουν νέα κομμάτια για προσθήκη.")
+        return
+
+    embeddings = model.encode([f"passage: {c}" for c in chunks], convert_to_numpy=True, show_progress_bar=True).astype('float32')
+    faiss.normalize_L2(embeddings)
+    index.add(embeddings)
+    faiss.write_index(index, INDEX_FILE)
+
+    merged_meta = old_meta + new_meta
+    with open(META_FILE, "w", encoding="utf-8") as f:
+        json.dump(merged_meta, f, ensure_ascii=False, indent=2)
+
+    print(f"✅ Προστέθηκαν {len(new_meta)} νέα κομμάτια στο index.")
+
+
+def remove_deleted_files(removed_files):
+    """Αφαιρεί metadata για αρχεία που διαγράφηκαν."""
+    if not removed_files:
+        return
+    print(f"🧹 Καθαρισμός index από {len(removed_files)} διαγραμμένα αρχεία...")
+    with open(META_FILE, "r", encoding="utf-8") as f:
+        metadata = json.load(f)
+    new_meta = [m for m in metadata if m["filename"] not in removed_files]
+    with open(META_FILE, "w", encoding="utf-8") as f:
+        json.dump(new_meta, f, ensure_ascii=False, indent=2)
+    print("✅ Διαγράφηκαν από το meta.json.")
+    print("⚠️ Το FAISS index δεν μπορεί να αφαιρέσει vectors — για πλήρη καθαρισμό, τρέξε με --rebuild.")
+
+
+# ---------------------------------------------------
+# 🔹 Main
+# ---------------------------------------------------
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--rebuild", action="store_true", help="Κάνει ολικό rebuild του index")
+    args = parser.parse_args()
+
+    old_metadata = []
+    if os.path.exists(META_FILE) and os.path.exists(INDEX_FILE):
+        with open(META_FILE, "r", encoding="utf-8") as f:
+            old_metadata = json.load(f)
+        old_files = {m["filename"] for m in old_metadata}
+    else:
+        old_files = set()
+
+    chunks, metadata = load_docs()
+    current_files = {m["filename"] for m in metadata}
+    new_files = current_files - old_files
+    removed_files = old_files - current_files
+
+    print(f"🆕 Νέα αρχεία: {len(new_files)}")
+    print(f"🗑️  Διαγραμμένα αρχεία: {len(removed_files)}")
+
+    if args.rebuild or not old_metadata:
+        rebuild_index(chunks, metadata)
+    else:
+        if new_files:
+            append_to_index(new_files, metadata)
+        if removed_files:
+            remove_deleted_files(removed_files)
+        if not new_files and not removed_files:
+            print("✅ Δεν υπάρχουν αλλαγές — το index είναι ενημερωμένο.")
 
 
 if __name__ == "__main__":
