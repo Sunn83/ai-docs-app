@@ -11,6 +11,9 @@ import re
 import subprocess
 import fitz
 
+PAGE_CACHE_DIR = os.path.join(DATA_DIR, "page_cache")
+os.makedirs(PAGE_CACHE_DIR, exist_ok=True)
+
 # -------------------- Config --------------------
 DATA_DIR = "/data"
 DOCS_PATH = os.path.join(DATA_DIR, "docs")
@@ -184,19 +187,35 @@ def convert_to_pdf(docx_path, pdf_dir):
         print(f"📄 Υπάρχει ήδη PDF για {os.path.basename(docx_path)}")
     return pdf_file
 
-def get_page_for_text(pdf_path, text_snippet, page_cache=None, chunk_id=None):
-    if page_cache is not None and chunk_id in page_cache:
-        return page_cache[chunk_id]
-    try:
-        doc = fitz.open(pdf_path)
-        snippet = text_snippet[:1000]
-        for page_num, page in enumerate(doc, start=1):
-            if snippet[:40].strip() in page.get_text("text"):
-                return page_num
-        return 1
-    except Exception as e:
-        print(f"⚠️ Δεν βρέθηκε σελίδα για {os.path.basename(pdf_path)}: {e}")
-        return 1
+def get_page_for_text(pdf_path, text_snippet):
+    """Επιστρέφει τη σελίδα που περιέχει το text_snippet, με caching ανά PDF."""
+    pdf_name = os.path.splitext(os.path.basename(pdf_path))[0]
+    cache_file = os.path.join(PAGE_CACHE_DIR, f"{pdf_name}.json")
+
+    # Φόρτωση cache αν υπάρχει
+    if os.path.exists(cache_file):
+        with open(cache_file, "r", encoding="utf-8") as f:
+            page_cache = json.load(f)
+    else:
+        page_cache = {"pages": {}}
+        try:
+            doc = fitz.open(pdf_path)
+            for num, page in enumerate(doc, 1):
+                page_cache["pages"][str(num)] = page.get_text("text")
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(page_cache, f, ensure_ascii=False)
+        except Exception as e:
+            print(f"⚠️ Σφάλμα στη δημιουργία cache PDF για {pdf_name}: {e}")
+            return 1
+
+    # Αναζήτηση της σελίδας
+    snippet = text_snippet[:120].strip()
+    for num, text in page_cache["pages"].items():
+        if snippet[:40] in text:
+            return int(num)
+
+    return 1
+
 
 def load_docs(rebuild=False):
     metadata, all_chunks = [], []
