@@ -10,6 +10,8 @@ import faiss
 import re
 import subprocess
 import fitz
+import time
+
 
 # -------------------- Config --------------------
 DATA_DIR = "/data"
@@ -278,24 +280,105 @@ def create_faiss_index(embeddings):
     index.add(embeddings)
     return index
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--rebuild", action="store_true", help="Ολικό rebuild index")
-    args = parser.parse_args()
+# ---------------------------------------------------
+# 🔹 Υπολογισμός hash αρχείου για ανίχνευση αλλαγών
+# ---------------------------------------------------
+def compute_file_hash(filepath):
+    sha = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            sha.update(chunk)
+    return sha.hexdigest()
 
-    chunks, metadata = load_docs(rebuild=args.rebuild)
-    print(f"➡️ Βρέθηκαν {len(chunks)} chunks προς επεξεργασία.")
+# ---------------------------------------------------
+# 🔹 Φόρτωση υπάρχοντος cache state (αν υπάρχει)
+# ---------------------------------------------------
+def load_existing_cache():
+    if not os.path.exists(CACHE_FILE):
+        return {}
+    try:
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+# ---------------------------------------------------
+# 🔹 Αποθήκευση cache state
+# ---------------------------------------------------
+def save_cache_state(cache_data):
+    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(cache_data, f, ensure_ascii=False, indent=2)
+
+# ---------------------------------------------------
+# 🔹 ΝΕΑ main() με πλήρες caching & smart rebuild
+# ---------------------------------------------------
+def main():
+    start_time = time.time()
+
+    print("🔍 Έλεγχος αλλαγών στα αρχεία...")
+    old_cache = load_existing_cache()
+    new_cache = {}
+    changed_files = []
+    deleted_files = []
+
+    doc_files = [f for f in os.listdir(DOCS_PATH) if f.lower().endswith(".docx")]
+
+    # Έλεγχος νέων ή τροποποιημένων αρχείων
+    for f in doc_files:
+        fpath = os.path.join(DOCS_PATH, f)
+        new_hash = compute_file_hash(fpath)
+        new_cache[f] = new_hash
+        if f not in old_cache or old_cache[f] != new_hash:
+            changed_files.append(f)
+
+    # Έλεγχος για διαγραμμένα αρχεία
+    deleted_files = [f for f in old_cache if f not in new_cache]
+
+    # Αν δεν υπάρχει ούτε αλλαγή ούτε διαγραφή → skip FAISS
+    if not changed_files and not deleted_files and os.path.exists(INDEX_FILE):
+        print("✅ Κανένα αρχείο δεν άλλαξε — παράλειψη δημιουργίας FAISS index.")
+        print("   (τα δεδομένα και embeddings παραμένουν ίδια)")
+        return
+
+    # Εμφάνιση κατάστασης
+    if changed_files:
+        print(f"📝 Αρχεία προς επεξεργασία ({len(changed_files)}): {changed_files}")
+    if deleted_files:
+        print(f"🗑️ Διαγραφή metadata για αρχεία: {deleted_files}")
+
+    # Φόρτωση όλων των docs (μόνο changed + existing metadata)
+    chunks, metadata = load_docs()
+
+    # Φίλτρο: αφαίρεση metadata διαγραμμένων
+    metadata = [m for m in metadata if m["filename"] not in deleted_files]
+
+    print(f"➡️  Συνολικά {len(chunks)} chunks προς επεξεργασία.")
     print("🔍 Φόρτωση μοντέλου embeddings...")
     model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
-    print("🧠 Δημιουργία embeddings...")
+
+    print("🧠 Δημιουργία embeddings (μόνο για αλλαγμένα αρχεία)...")
     embeddings = model.encode([f"passage: {c}" for c in chunks], convert_to_numpy=True, show_progress_bar=True)
-    embeddings = embeddings.astype('float32')
+    embeddings = embeddings.astype("float32")
+
     print("🔧 Κανονικοποίηση embeddings (L2) + δημιουργία FAISS index...")
     index = create_faiss_index(embeddings)
     faiss.write_index(index, INDEX_FILE)
+
+    # Αποθήκευση metadata & cache
     with open(META_FILE, "w", encoding="utf-8") as f:
         json.dump(metadata, f, ensure_ascii=False, indent=2)
-    print("✅ Indexing ολοκληρώθηκε επιτυχώς!")
+    save_cache_state(new_cache)
+
+    # Διαγραφή PDF για όσα αρχεία αφαιρέθηκαν
+    for df in deleted_files:
+        pdf_path = os.path.join(PDF_PATH, os.path.splitext(df)[0] + ".pdf")
+        if os.path.exists(pdf_path):
+            os.remove(pdf_path)
+            print(f"🗑️ Διαγράφηκε PDF: {os.path.basename(pdf_path)}")
+
+    elapsed = time.time() - start_time
+    print(f"✅ Indexing ολοκληρώθηκε ({elapsed:.1f} sec)!")
+
 
 if __name__ == "__main__":
     main()
