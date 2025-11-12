@@ -334,29 +334,28 @@ def main():
     # Έλεγχος για διαγραμμένα αρχεία
     deleted_files = [f for f in old_cache if f not in new_cache]
 
-    # Αν δεν υπάρχει ούτε αλλαγή ούτε διαγραφή → skip FAISS
+    # ✅ Αν δεν υπάρχει ούτε αλλαγή ούτε διαγραφή → SKIP ΠΑΝΤΑ
     if not changed_files and not deleted_files and os.path.exists(INDEX_FILE):
         print("✅ Κανένα αρχείο δεν άλλαξε — παράλειψη δημιουργίας FAISS index.")
-        print("   (τα δεδομένα και embeddings παραμένουν ίδια)")
-        return
+        print("   (παράλειψη και του load_docs, δεν τρέχουν embeddings)")
+        return  # 🔥 εδώ σταματάμε τα πάντα 🔥
 
-    # Εμφάνιση κατάστασης
+    # Αν έφτασες εδώ, σημαίνει ότι υπάρχουν αλλαγές ή διαγραφές
     if changed_files:
         print(f"📝 Αρχεία προς επεξεργασία ({len(changed_files)}): {changed_files}")
     if deleted_files:
         print(f"🗑️ Διαγραφή metadata για αρχεία: {deleted_files}")
 
-    # Φόρτωση όλων των docs (μόνο changed + existing metadata)
+    # ⚙️ μόνο τώρα φορτώνουμε docx (αν υπάρχει αλλαγή)
     chunks, metadata = load_docs()
 
-    # Φίλτρο: αφαίρεση metadata διαγραμμένων
     metadata = [m for m in metadata if m["filename"] not in deleted_files]
 
-    print(f"➡️  Συνολικά {len(chunks)} chunks προς επεξεργασία.")
+    print(f"➡️ Συνολικά {len(chunks)} chunks προς επεξεργασία.")
     print("🔍 Φόρτωση μοντέλου embeddings...")
     model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
 
-    print("🧠 Δημιουργία embeddings (μόνο για αλλαγμένα αρχεία)...")
+    print("🧠 Δημιουργία embeddings...")
     embeddings = model.encode([f"passage: {c}" for c in chunks], convert_to_numpy=True, show_progress_bar=True)
     embeddings = embeddings.astype("float32")
 
@@ -378,7 +377,6 @@ def main():
 
     elapsed = time.time() - start_time
     print(f"✅ Indexing ολοκληρώθηκε ({elapsed:.1f} sec)!")
-
 
 if __name__ == "__main__":
     main()
