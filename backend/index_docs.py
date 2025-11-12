@@ -272,7 +272,7 @@ def load_docs(rebuild=False):
             if not chunks and sec_text.strip():
                 chunks = [sec_text.strip()]
             for cj, chunk in enumerate(chunks):
-                page = get_page_for_text(pdf_path, chunk, file_cache["pages"], chunk_id=str(cj))
+                page = get_page_for_text(pdf_path, chunk)
                 file_cache["pages"][str(cj)] = page
                 entry = {
                     "filename": fname,
