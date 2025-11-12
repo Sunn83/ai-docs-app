@@ -309,23 +309,30 @@ def main():
     args = parser.parse_args()
 
     chunks, metadata = load_docs(rebuild=args.rebuild)
+
+    # ✅ Αν δεν έγινε rebuild και υπάρχουν ήδη index/meta, έλεγξε αν υπήρξαν αλλαγές
     if not args.rebuild and os.path.exists(INDEX_FILE) and os.path.exists(META_FILE):
-    with open(META_FILE, "r", encoding="utf-8") as f:
-        old_meta = json.load(f)
-    if len(old_meta) == len(metadata):
-        print("✅ Δεν εντοπίστηκαν αλλαγές – διατηρείται το υπάρχον FAISS index.")
-        return
+        with open(META_FILE, "r", encoding="utf-8") as f:
+            old_meta = json.load(f)
+        if len(old_meta) == len(metadata):
+            print("✅ Δεν εντοπίστηκαν αλλαγές – διατηρείται το υπάρχον FAISS index.")
+            return
+
     print(f"➡️ Βρέθηκαν {len(chunks)} chunks προς επεξεργασία.")
     print("🔍 Φόρτωση μοντέλου embeddings...")
     model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
+
     print("🧠 Δημιουργία embeddings...")
     embeddings = model.encode([f"passage: {c}" for c in chunks], convert_to_numpy=True, show_progress_bar=True)
     embeddings = embeddings.astype('float32')
+
     print("🔧 Κανονικοποίηση embeddings (L2) + δημιουργία FAISS index...")
     index = create_faiss_index(embeddings)
     faiss.write_index(index, INDEX_FILE)
+
     with open(META_FILE, "w", encoding="utf-8") as f:
         json.dump(metadata, f, ensure_ascii=False, indent=2)
+
     print("✅ Indexing ολοκληρώθηκε επιτυχώς!")
 
 if __name__ == "__main__":
