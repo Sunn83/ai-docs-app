@@ -309,6 +309,12 @@ def main():
     args = parser.parse_args()
 
     chunks, metadata = load_docs(rebuild=args.rebuild)
+    if not args.rebuild and os.path.exists(INDEX_FILE) and os.path.exists(META_FILE):
+    with open(META_FILE, "r", encoding="utf-8") as f:
+        old_meta = json.load(f)
+    if len(old_meta) == len(metadata):
+        print("✅ Δεν εντοπίστηκαν αλλαγές – διατηρείται το υπάρχον FAISS index.")
+        return
     print(f"➡️ Βρέθηκαν {len(chunks)} chunks προς επεξεργασία.")
     print("🔍 Φόρτωση μοντέλου embeddings...")
     model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
