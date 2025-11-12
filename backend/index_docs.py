@@ -237,6 +237,11 @@ def load_docs(rebuild=False):
         pdf_file = os.path.join(PDF_PATH, os.path.splitext(f)[0]+".pdf")
         if os.path.exists(pdf_file):
             os.remove(pdf_file)
+
+        cache_file = os.path.join(PAGE_CACHE_DIR, os.path.splitext(f)[0] + ".json")
+        if os.path.exists(cache_file):
+            os.remove(cache_file)
+
         # Remove cache entry
         cache.pop(f, None)
 
