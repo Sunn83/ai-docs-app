@@ -11,9 +11,6 @@ import re
 import subprocess
 import fitz
 
-PAGE_CACHE_DIR = os.path.join(DATA_DIR, "page_cache")
-os.makedirs(PAGE_CACHE_DIR, exist_ok=True)
-
 # -------------------- Config --------------------
 DATA_DIR = "/data"
 DOCS_PATH = os.path.join(DATA_DIR, "docs")
@@ -24,6 +21,10 @@ CACHE_FILE = os.path.join(DATA_DIR, "index_cache.json")
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 150
+
+# 🗂️ Page cache folder
+PAGE_CACHE_DIR = os.path.join(DATA_DIR, "page_cache")
+os.makedirs(PAGE_CACHE_DIR, exist_ok=True)
 
 # -------------------- Helpers --------------------
 def get_file_hash(filepath):
