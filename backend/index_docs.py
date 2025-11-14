@@ -189,34 +189,72 @@ def convert_to_pdf(docx_path, pdf_dir):
     return pdf_file
 
 def get_page_for_text(pdf_path, text_snippet):
-    """Επιστρέφει τη σελίδα που περιέχει το text_snippet, με caching ανά PDF."""
+    """Επιστρέφει τη σελίδα που περιέχει το text_snippet, με caching ανά PDF
+       και με normalization + fallback σε blocks για πιο σύνθετα layouts.
+    """
+
+    def normalize(s):
+        return (
+            s.lower()
+            .replace("\n", " ")
+            .replace("\r", "")
+            .replace("  ", " ")
+            .strip()
+        )
+
     pdf_name = os.path.splitext(os.path.basename(pdf_path))[0]
     cache_file = os.path.join(PAGE_CACHE_DIR, f"{pdf_name}.json")
 
-    # Φόρτωση cache αν υπάρχει
+    # ---------------------------------------------------------
+    # 1️⃣ Φόρτωση ή δημιουργία cache PDF text ανά σελίδα
+    # ---------------------------------------------------------
     if os.path.exists(cache_file):
+        # φόρτωσε από cache
         with open(cache_file, "r", encoding="utf-8") as f:
             page_cache = json.load(f)
     else:
+        # δημιουργία cache
         page_cache = {"pages": {}}
         try:
             doc = fitz.open(pdf_path)
-            for num, page in enumerate(doc, 1):
-                page_cache["pages"][str(num)] = page.get_text("text")
+
+            for page_num in range(doc.page_count):
+                page = doc.load_page(page_num)
+
+                # βασικό text extraction
+                text = page.get_text("text").strip()
+
+                # fallback σε blocks σε περίπτωση κακού layout PDF
+                if not text:
+                    blocks = page.get_text("blocks")
+                    text = " ".join(b[4] for b in blocks if b[4].strip())
+
+                page_cache["pages"][str(page_num + 1)] = text
+
+            # save cache
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(page_cache, f, ensure_ascii=False)
+
         except Exception as e:
             print(f"⚠️ Σφάλμα στη δημιουργία cache PDF για {pdf_name}: {e}")
             return 1
 
-    # Αναζήτηση της σελίδας
+    # ---------------------------------------------------------
+    # 2️⃣ Normalized αναζήτηση snippet → σελίδα PDF
+    # ---------------------------------------------------------
     snippet = text_snippet[:120].strip()
+    norm_snippet = normalize(snippet)
+    short_snippet = norm_snippet[:40]  # πιο σταθερό matching
+
     for num, text in page_cache["pages"].items():
-        if snippet[:40] in text:
+        norm_text = normalize(text)
+        if short_snippet in norm_text:
             return int(num)
 
+    # ---------------------------------------------------------
+    # 3️⃣ Αν αποτύχει → default page 1
+    # ---------------------------------------------------------
     return 1
-
 
 def load_docs(rebuild=False):
     metadata, all_chunks = [], []
