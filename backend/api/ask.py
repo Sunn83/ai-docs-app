@@ -4,16 +4,14 @@ import faiss, json, os, re
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from urllib.parse import quote
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
 
 router = APIRouter()
 
 INDEX_FILE = "/data/faiss.index"
 META_FILE = "/data/docs_meta.json"
-PDF_BASE_URL = "http://144.91.115.48:8000/pdf"
+PDF_BASE_URL = "http://144.91.115.48:8000/pdf"  # σωστό path για PDFs
 
-# 🔹 Φόρτωση SentenceTransformer για FAISS
+# 🔹 Φόρτωση μοντέλου και index
 model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
 
 if not os.path.exists(INDEX_FILE) or not os.path.exists(META_FILE):
@@ -24,11 +22,6 @@ with open(META_FILE, "r", encoding="utf-8") as f:
     metadata = json.load(f)
 
 print("✅ FAISS index και metadata φορτώθηκαν στη μνήμη.")
-
-# -------------------- Local LLM setup --------------------
-MODEL_NAME = "TheBloke/LLaMA-2-7B-GPTQ"  # μπορείς να αλλάξεις με άλλο GPTQ/LLM
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model_llm = AutoModelForCausalLM.from_pretrained(MODEL_NAME, device_map="auto", torch_dtype=torch.float16)
 
 # -------------------- Memory για follow-up --------------------
 CHAT_HISTORY = []  # (role, text) tuples
@@ -79,13 +72,6 @@ USER: {user_message}
 Δώσε καθαρή, δομημένη και κατανοητή απάντηση.
 """
 
-# -------------------- Κλήση Local LLM --------------------
-def call_local_llm(prompt: str, max_new_tokens=256):
-    inputs = tokenizer(prompt, return_tensors="pt").to(model_llm.device)
-    output = model_llm.generate(**inputs, max_new_tokens=max_new_tokens)
-    text = tokenizer.decode(output[0], skip_special_tokens=True)
-    return text
-
 # -------------------- Endpoint --------------------
 @router.post("/api/ask")
 def ask(query: Query):
@@ -94,7 +80,7 @@ def ask(query: Query):
         if not question:
             raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
-        # 🔹 Encode query για FAISS
+        # 🔹 Encode query
         q_emb = model.encode([question], convert_to_numpy=True)
         q_emb = q_emb.astype("float32")
         faiss.normalize_L2(q_emb)
@@ -127,8 +113,9 @@ def ask(query: Query):
         # 🔹 Φτιάχνουμε prompt με ιστορικό
         prompt = build_prompt(CHAT_HISTORY, question, context_chunks)
 
-        # 🔹 Κλήση Local LLM
-        response_text = call_local_llm(prompt)
+        # 🔹 Κλήση LLM (χρησιμοποίησε τη δική σου συνάρτηση που στέλνει prompt στο μοντέλο)
+        # Για παράδειγμα: response_text = call_llm(prompt)
+        response_text = "📝 Προσομοίωση απάντησης από LLM για παράδειγμα."  # αντικατάστησε με call_llm(prompt)
 
         # 🔹 Ενημέρωση memory
         CHAT_HISTORY.append(("user", question))
