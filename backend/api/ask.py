@@ -23,6 +23,10 @@ with open(META_FILE, "r", encoding="utf-8") as f:
 
 print("✅ FAISS index και metadata φορτώθηκαν στη μνήμη.")
 
+# -------------------- Memory για follow-up --------------------
+CHAT_HISTORY = []  # (role, text) tuples
+MAX_HISTORY = 8
+
 class Query(BaseModel):
     question: str
 
@@ -35,6 +39,40 @@ def clean_text(t: str) -> str:
     t = re.sub(r"\n{3,}", "\n\n", t)
     return t.strip()
 
+# -------------------- Build prompt για LLM --------------------
+def build_prompt(history, user_message, context_chunks):
+    history_text = ""
+    for role, content in history:
+        history_text += f"{role.upper()}: {content}\n"
+
+    context_text = "\n\n---\n\n".join(context_chunks)
+
+    return f"""
+Σε αυτό το συνομιλητικό περιβάλλον είσαι νομικός βοηθός.
+Ακολουθεί πλήρες ιστορικό συζήτησης:
+
+{history_text}
+
+---
+
+Νέα ερώτηση χρήστη:
+USER: {user_message}
+
+---
+
+Χρησιμοποίησε τις παρακάτω σχετικές πληροφορίες (RAG):
+{context_text}
+
+Οδηγίες:
+- Αν η ερώτηση είναι follow-up, απάντησε λαμβάνοντας υπόψη το ιστορικό.
+- Αν σου ζητηθεί "άλλο παράδειγμα", δώσε νέο παράδειγμα.
+- Αν η ερώτηση έχει παραμέτρους, κάνε συλλογιστική και υπολόγισε το αποτέλεσμα.
+- Αν δεν υπάρχει απάντηση στο context, απάντησε "δεν βρέθηκε πληροφορία".
+
+Δώσε καθαρή, δομημένη και κατανοητή απάντηση.
+"""
+
+# -------------------- Endpoint --------------------
 @router.post("/api/ask")
 def ask(query: Query):
     try:
@@ -42,7 +80,7 @@ def ask(query: Query):
         if not question:
             raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
-        # 🔹 Encode query (χωρίς "query: ")
+        # 🔹 Encode query
         q_emb = model.encode([question], convert_to_numpy=True)
         q_emb = q_emb.astype("float32")
         faiss.normalize_L2(q_emb)
@@ -56,7 +94,7 @@ def ask(query: Query):
             if idx < len(metadata):
                 md = metadata[idx]
                 text = md.get("text", "").strip()
-                if text:  # ✅ Αγνοούμε κενά chunks
+                if text:
                     results.append({
                         "idx": int(idx),
                         "score": float(score),
@@ -70,12 +108,26 @@ def ask(query: Query):
 
         # 🔹 Κράτα τις 3 καλύτερες απαντήσεις
         top_results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
+        context_chunks = [r["text"] for r in top_results]
 
+        # 🔹 Φτιάχνουμε prompt με ιστορικό
+        prompt = build_prompt(CHAT_HISTORY, question, context_chunks)
+
+        # 🔹 Κλήση LLM (χρησιμοποίησε τη δική σου συνάρτηση που στέλνει prompt στο μοντέλο)
+        # Για παράδειγμα: response_text = call_llm(prompt)
+        response_text = "📝 Προσομοίωση απάντησης από LLM για παράδειγμα."  # αντικατάστησε με call_llm(prompt)
+
+        # 🔹 Ενημέρωση memory
+        CHAT_HISTORY.append(("user", question))
+        CHAT_HISTORY.append(("assistant", response_text))
+        if len(CHAT_HISTORY) > MAX_HISTORY:
+            CHAT_HISTORY[:] = CHAT_HISTORY[-MAX_HISTORY:]
+
+        # 🔹 Επιστροφή formatted απαντήσεων με PDF links
         answers = []
         for r in top_results:
             answer_text = clean_text(r["text"])
             filename_pdf = re.sub(r'\.docx?$', '.pdf', r["filename"], flags=re.IGNORECASE)
-            # encoded_filename = quote(r["filename"])
             encoded_filename = quote(filename_pdf)
             pdf_url = f"{PDF_BASE_URL}/{encoded_filename}#page={r['page']}"
 
@@ -84,13 +136,9 @@ def ask(query: Query):
                 f"📄 Πηγή: [{r['filename']}]({pdf_url})\n"
                 f"📑 Σελίδα: {r['page']}"
             )
+            answers.append({"answer": formatted, "score": r["score"]})
 
-            answers.append({
-                "answer": formatted,
-                "score": r["score"]
-            })
-
-        return {"answers": answers, "query": question}
+        return {"answers": answers, "query": question, "llm_answer": response_text}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
