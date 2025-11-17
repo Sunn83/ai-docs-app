@@ -1,9 +1,9 @@
 fastapi
 uvicorn
-python-multipart
 requests
 faiss-cpu
-pandas
 numpy
 python-docx
-ollama
+sentence-transformers
+PyMuPDF
+pydantic
