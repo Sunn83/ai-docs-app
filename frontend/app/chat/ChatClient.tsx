@@ -30,7 +30,7 @@ export default function ChatClient() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/ask", {
+      const res = await fetch(process.env.NEXT_PUBLIC_API_URL + "/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: input }),
