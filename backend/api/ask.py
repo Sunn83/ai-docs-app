@@ -10,9 +10,9 @@ router = APIRouter()
 
 INDEX_FILE = "/data/faiss.index"
 META_FILE = "/data/docs_meta.json"
-PDF_BASE_URL = "http://144.91.115.48:8000/pdf"  # σωστό path για PDFs
+PDF_BASE_URL = os.getenv("PDF_BASE_URL", "http://backend:8000/pdf")
 
-LLAMA_URL = "http://llama:8080/completion"  # llama.cpp server
+LLAMA_URL = "http://llama:8080/v1/completions"
 
 # 🔹 Φόρτωση μοντέλου και index
 model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
@@ -75,8 +75,9 @@ USER: {user_message}
 # -------------------- LLM call (local llama.cpp server) --------------------
 def call_llm(prompt: str) -> str:
     payload = {
+        "model": "local",
         "prompt": prompt,
-        "n_predict": 512,
+        "max_tokens": 512,
         "temperature": 0.2,
         "stop": ["USER:", "ASSISTANT:"]
     }
@@ -85,7 +86,7 @@ def call_llm(prompt: str) -> str:
         r = requests.post(LLAMA_URL, json=payload, timeout=120)
         r.raise_for_status()
         data = r.json()
-        return data.get("content", "").strip()
+        return data["choices"][0]["text"].strip()
     except Exception as e:
         return f"⚠ Σφάλμα από το LLM: {str(e)}"
 
