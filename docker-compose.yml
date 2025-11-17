@@ -28,12 +28,10 @@ services:
       - ./data:/data
       - ./hf_cache:/root/.cache/huggingface   # ✅ cache για το model
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-
+    depends_on:
+    llama:
+      condition: service_healthy
+    
 llama:
     image: ghcr.io/ggerganov/llama.cpp:server
     container_name: local-llama
@@ -52,6 +50,11 @@ llama:
     ports:
       - "8080:8080"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   nginx:
     image: nginx:latest
