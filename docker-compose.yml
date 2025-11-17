@@ -29,6 +29,24 @@ services:
       - ./hf_cache:/root/.cache/huggingface   # ✅ cache για το model
     restart: unless-stopped
 
+llama:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    container_name: local-llama
+    volumes:
+      - ./models:/models
+    command:
+      - "/server"
+      - "--model"
+      - "/models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
+      - "--ctx-size"
+      - "4096"
+      - "--threads"
+      - "8"
+      - "--port"
+      - "8080"
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
 
   nginx:
     image: nginx:latest
