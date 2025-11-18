@@ -1,6 +1,5 @@
-version: "3.9"
-
 services:
+
   frontend:
     build:
       context: ./frontend
@@ -12,6 +11,30 @@ services:
       - .env
     depends_on:
       - backend
+
+  llama:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    container_name: local-llama
+    volumes:
+      - ./models:/models
+    command:
+      - "/app/llama-server"
+      - "--model"
+      - "/models/Meta-Llama-3.1-8B-Instruct.Q4_K_M.gguf"
+      - "--ctx-size"
+      - "4096"
+      - "--threads"
+      - "8"
+      - "--port"
+      - "8080"
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   backend:
     build:
@@ -31,31 +54,6 @@ services:
     depends_on:
       llama:
         condition: service_healthy
-
-
-  llama:
-    image: ghcr.io/ggerganov/llama.cpp:server
-    container_name: local-llama
-    volumes:
-      - ./models:/models
-    command:
-      - "/server"
-      - "--model"
-      - "/models/Meta-Llama-3.1-8B-Instruct.Q4_K_M.gguf"
-      - "--ctx-size"
-      - "4096"
-      - "--threads"
-      - "8"
-      - "--port"
-      - "8080"
-    ports:
-      - "8080:8080"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
 
   nginx:
     image: nginx:latest
