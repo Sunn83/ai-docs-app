@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import faiss, json, os, re
 import numpy as np
@@ -6,15 +7,26 @@ from sentence_transformers import SentenceTransformer
 from urllib.parse import quote
 import requests
 
+# -------------------- FastAPI App & CORS --------------------
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://144.91.115.48:3000"],  # frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 router = APIRouter()
 
+# -------------------- Files & URLs --------------------
 INDEX_FILE = "/data/faiss.index"
 META_FILE = "/data/docs_meta.json"
 PDF_BASE_URL = os.getenv("PDF_BASE_URL", "http://backend:8000/pdf")
-
 LLAMA_URL = "http://llama:8080/v1/completions"
 
-# 🔹 Φόρτωση μοντέλου και index
+# -------------------- Load Model & Index --------------------
 model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
 
 if not os.path.exists(INDEX_FILE) or not os.path.exists(META_FILE):
@@ -33,7 +45,6 @@ MAX_HISTORY = 8
 class Query(BaseModel):
     question: str
 
-
 # -------------------- Utility: Clean text --------------------
 def clean_text(t: str) -> str:
     if not t:
@@ -42,7 +53,6 @@ def clean_text(t: str) -> str:
     t = re.sub(r"[ \t]+", " ", t)
     t = re.sub(r"\n{3,}", "\n\n", t)
     return t.strip()
-
 
 # -------------------- Build LLM prompt --------------------
 def build_prompt(history, user_message, context_chunks):
@@ -71,8 +81,7 @@ USER: {user_message}
 - Δώσε καθαρή, δομημένη και τεκμηριωμένη απάντηση.
 """
 
-
-# -------------------- LLM call (local llama.cpp server) --------------------
+# -------------------- LLM call --------------------
 def call_llm(prompt: str) -> str:
     payload = {
         "model": "local",
@@ -90,7 +99,6 @@ def call_llm(prompt: str) -> str:
     except Exception as e:
         return f"⚠ Σφάλμα από το LLM: {str(e)}"
 
-
 # -------------------- API Endpoint --------------------
 @router.post("/api/ask")
 def ask(query: Query):
@@ -99,11 +107,11 @@ def ask(query: Query):
         if not question:
             raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
-        # 🔹 Encode Query
+        # Encode Query
         q_emb = model.encode([question], convert_to_numpy=True).astype("float32")
         faiss.normalize_L2(q_emb)
 
-        # 🔹 FAISS Search
+        # FAISS Search
         k = 10
         D, I = index.search(q_emb, k)
 
@@ -124,23 +132,20 @@ def ask(query: Query):
         if not results:
             return {"answers": [{"answer": "Δεν βρέθηκε σχετική απάντηση.", "score": 0}]}
 
-        # 🔹 Κρατά μόνο τις 3 καλύτερες
         top_results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
         context_chunks = [r["text"] for r in top_results]
 
-        # 🔹 Φτιάχνουμε prompt
+        # Build prompt & call LLM
         prompt = build_prompt(CHAT_HISTORY, question, context_chunks)
-
-        # 🔹 LLM Answer (εδώ πλέον μιλάμε με το llama.cpp)
         response_text = call_llm(prompt)
 
-        # 🔹 Memory Updated
+        # Update memory
         CHAT_HISTORY.append(("user", question))
         CHAT_HISTORY.append(("assistant", response_text))
         if len(CHAT_HISTORY) > MAX_HISTORY:
             CHAT_HISTORY[:] = CHAT_HISTORY[-MAX_HISTORY:]
 
-        # 🔹 Πακετάρισμα απαντήσεων με PDF links
+        # Pack answers with PDF links
         answers = []
         for r in top_results:
             answer_text = clean_text(r["text"])
@@ -163,3 +168,6 @@ def ask(query: Query):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# -------------------- Include router in app --------------------
+app.include_router(router)
