@@ -26,13 +26,14 @@ services:
     volumes:
       - ./backend:/app
       - ./data:/data
-      - ./hf_cache:/root/.cache/huggingface   # ✅ cache για το model
+      - ./hf_cache:/root/.cache/huggingface
     restart: unless-stopped
     depends_on:
-    llama:
-      condition: service_healthy
-    
-llama:
+      llama:
+        condition: service_healthy
+
+
+  llama:
     image: ghcr.io/ggerganov/llama.cpp:server
     container_name: local-llama
     volumes:
@@ -40,7 +41,7 @@ llama:
     command:
       - "/server"
       - "--model"
-      - "/models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
+      - "/models/Meta-Llama-3.1-8B-Instruct.Q4_K_M.gguf"
       - "--ctx-size"
       - "4096"
       - "--threads"
