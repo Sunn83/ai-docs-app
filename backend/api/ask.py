@@ -92,7 +92,7 @@ def call_llm(prompt: str) -> str:
     }
 
     try:
-        r = requests.post(LLAMA_URL, json=payload, timeout=120)
+        r = requests.post(LLAMA_URL, json=payload, timeout=300)
         r.raise_for_status()
         data = r.json()
         return data["choices"][0]["text"].strip()
