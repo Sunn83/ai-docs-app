@@ -23,7 +23,7 @@ router = APIRouter()
 # -------------------- Files & URLs --------------------
 INDEX_FILE = "/data/faiss.index"
 META_FILE = "/data/docs_meta.json"
-PDF_BASE_URL = os.getenv("PDF_BASE_URL", "http://backend:8000/pdf")
+PDF_BASE_URL = os.getenv("PDF_BASE_URL", "http://144.91.115.48:8000/pdf")
 LLAMA_URL = "http://llama:8080/v1/completions"
 
 # -------------------- Load Model & Index --------------------
