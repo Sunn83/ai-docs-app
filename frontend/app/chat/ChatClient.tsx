@@ -121,7 +121,7 @@ export default function ChatClient() {
                             : "bg-gray-200 text-gray-700"
                         }`}
                       >
-                        Απάντηση {idx + 1}
+                        {idx === 0 ? "ASTbooks" : `Απάντηση ${idx}`}
                       </button>
                     ))}
                   </div>
