@@ -30,33 +30,20 @@ export default function ChatClient() {
     setLoading(true);
 
     try {
-  const res = await fetch("/api/ask", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question: input }),
-  });
+      const res = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: input }),
+      });
 
-  const data = await res.json();
+      const data = await res.json();
+      const answers: string[] = data.answers?.map((a: any) => a.answer) || [
+        "⚠️ Δεν βρέθηκαν απαντήσεις."
+      ];
 
-  const answers: string[] = data.answers?.map((a: any) => a.answer) || [
-    "⚠️ Δεν βρέθηκαν απαντήσεις."
-  ];
-
-  // 🟦 ΠΡΟΣΘΗΚΗ ΤΟΥ LLM ΣΤΟ ΠΡΩΤΟ TAB
-  const allTabs = [
-    data.llm_answer || "⚠️ Δεν δημιουργήθηκε απάντηση από το LLM",
-    ...answers
-  ];
-
-  const botMessage: Message = { 
-    role: "assistant", 
-    content: allTabs, 
-    activeTab: 0 
-  };
-
-  setMessages(prev => [...prev, botMessage]);
-
-} catch (err) {
+      const botMessage: Message = { role: "assistant", content: answers, activeTab: 0 };
+      setMessages(prev => [...prev, botMessage]);
+    } catch (err) {
       console.error(err);
       const botMessage: Message = {
         role: "assistant",
@@ -121,14 +108,14 @@ export default function ChatClient() {
                             : "bg-gray-200 text-gray-700"
                         }`}
                       >
-                        {idx === 0 ? "ASTbooks" : `Απάντηση ${idx}`}
+                        Απάντηση {idx + 1}
                       </button>
                     ))}
                   </div>
                 )}
 
                 {/* Active answer */}
-                <div className="prose prose-sm max-w-none break-words text-justify leading-relaxed">
+                <div className="prose prose-sm max-w-none break-words whitespace-pre-wrap text-justify leading-relaxed">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
