@@ -30,20 +30,33 @@ export default function ChatClient() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: input }),
-      });
+  const res = await fetch("/api/ask", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question: input }),
+  });
 
-      const data = await res.json();
-      const answers: string[] = data.answers?.map((a: any) => a.answer) || [
-        "⚠️ Δεν βρέθηκαν απαντήσεις."
-      ];
+  const data = await res.json();
 
-      const botMessage: Message = { role: "assistant", content: answers, activeTab: 0 };
-      setMessages(prev => [...prev, botMessage]);
-    } catch (err) {
+  const answers: string[] = data.answers?.map((a: any) => a.answer) || [
+    "⚠️ Δεν βρέθηκαν απαντήσεις."
+  ];
+
+  // 🟦 ΠΡΟΣΘΗΚΗ ΤΟΥ LLM ΣΤΟ ΠΡΩΤΟ TAB
+  const allTabs = [
+    data.llm_answer || "⚠️ Δεν δημιουργήθηκε απάντηση από το LLM",
+    ...answers
+  ];
+
+  const botMessage: Message = { 
+    role: "assistant", 
+    content: allTabs, 
+    activeTab: 0 
+  };
+
+  setMessages(prev => [...prev, botMessage]);
+
+} catch (err) {
       console.error(err);
       const botMessage: Message = {
         role: "assistant",
