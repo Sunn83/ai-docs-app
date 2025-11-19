@@ -1,32 +1,17 @@
-from fastapi import FastAPI, APIRouter, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import faiss, json, os, re
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from urllib.parse import quote
-import requests
-
-# -------------------- FastAPI App & CORS --------------------
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://144.91.115.48:3000"],  # frontend URL
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 router = APIRouter()
 
-# -------------------- Files & URLs --------------------
 INDEX_FILE = "/data/faiss.index"
 META_FILE = "/data/docs_meta.json"
-PDF_BASE_URL = os.getenv("PDF_BASE_URL", "http://144.91.115.48:8000/pdf")
-LLAMA_URL = "http://llama:8080/v1/completions"
+PDF_BASE_URL = "http://144.91.115.48:8000/pdf"  # σωστό path για PDFs
 
-# -------------------- Load Model & Index --------------------
+# 🔹 Φόρτωση μοντέλου και index
 model = SentenceTransformer("intfloat/multilingual-e5-base", cache_folder="/root/.cache/huggingface")
 
 if not os.path.exists(INDEX_FILE) or not os.path.exists(META_FILE):
@@ -39,14 +24,14 @@ with open(META_FILE, "r", encoding="utf-8") as f:
 print("✅ FAISS index και metadata φορτώθηκαν στη μνήμη.")
 
 # -------------------- Memory για follow-up --------------------
-CHAT_HISTORY = []
+CHAT_HISTORY = []  # (role, text) tuples
 MAX_HISTORY = 8
 
 class Query(BaseModel):
     question: str
 
-# -------------------- Utility: Clean text --------------------
 def clean_text(t: str) -> str:
+    """Καθαρισμός κειμένου, διατηρεί newlines"""
     if not t:
         return ""
     t = t.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
@@ -54,20 +39,23 @@ def clean_text(t: str) -> str:
     t = re.sub(r"\n{3,}", "\n\n", t)
     return t.strip()
 
-# -------------------- Build LLM prompt --------------------
+# -------------------- Build prompt για LLM --------------------
 def build_prompt(history, user_message, context_chunks):
-    history_text = "".join(f"{role.upper()}: {content}\n" for role, content in history)
+    history_text = ""
+    for role, content in history:
+        history_text += f"{role.upper()}: {content}\n"
+
     context_text = "\n\n---\n\n".join(context_chunks)
 
     return f"""
-Σε αυτό το συνομιλητικό περιβάλλον είσαι νομικός βοηθός ειδικευμένος σε Φορολογική νομοθεσία, ΚΦΔ, ΚΦΕ και ΕΛΠ.
+Σε αυτό το συνομιλητικό περιβάλλον είσαι νομικός βοηθός.
+Ακολουθεί πλήρες ιστορικό συζήτησης:
 
-Ακολουθεί ιστορικό συζήτησης:
 {history_text}
 
 ---
 
-Ερώτηση χρήστη:
+Νέα ερώτηση χρήστη:
 USER: {user_message}
 
 ---
@@ -76,30 +64,15 @@ USER: {user_message}
 {context_text}
 
 Οδηγίες:
-- Αν η ερώτηση είναι follow-up, λάβε υπόψη το ιστορικό.
-- Αν δεν υπάρχει απάντηση στο context, πες «Δεν βρέθηκε σχετική πληροφορία».
-- Δώσε καθαρή, δομημένη και τεκμηριωμένη απάντηση.
+- Αν η ερώτηση είναι follow-up, απάντησε λαμβάνοντας υπόψη το ιστορικό.
+- Αν σου ζητηθεί "άλλο παράδειγμα", δώσε νέο παράδειγμα.
+- Αν η ερώτηση έχει παραμέτρους, κάνε συλλογιστική και υπολόγισε το αποτέλεσμα.
+- Αν δεν υπάρχει απάντηση στο context, απάντησε "δεν βρέθηκε πληροφορία".
+
+Δώσε καθαρή, δομημένη και κατανοητή απάντηση.
 """
 
-# -------------------- LLM call --------------------
-def call_llm(prompt: str) -> str:
-    payload = {
-        "model": "local",
-        "prompt": prompt,
-        "max_tokens": 512,
-        "temperature": 0.2,
-        "stop": ["USER:", "ASSISTANT:"]
-    }
-
-    try:
-        r = requests.post(LLAMA_URL, json=payload, timeout=300)
-        r.raise_for_status()
-        data = r.json()
-        return data["choices"][0]["text"].strip()
-    except Exception as e:
-        return f"⚠ Σφάλμα από το LLM: {str(e)}"
-
-# -------------------- API Endpoint --------------------
+# -------------------- Endpoint --------------------
 @router.post("/api/ask")
 def ask(query: Query):
     try:
@@ -107,11 +80,12 @@ def ask(query: Query):
         if not question:
             raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
-        # Encode Query
-        q_emb = model.encode([question], convert_to_numpy=True).astype("float32")
+        # 🔹 Encode query
+        q_emb = model.encode([question], convert_to_numpy=True)
+        q_emb = q_emb.astype("float32")
         faiss.normalize_L2(q_emb)
 
-        # FAISS Search
+        # 🔹 Αναζήτηση FAISS
         k = 10
         D, I = index.search(q_emb, k)
 
@@ -130,26 +104,30 @@ def ask(query: Query):
                     })
 
         if not results:
-            return {"answers": [{"answer": "Δεν βρέθηκε σχετική απάντηση.", "score": 0}]}
+            return {"answers": [{"answer": "Δεν βρέθηκε σχετική απάντηση.", "score": 0}], "query": question}
 
+        # 🔹 Κράτα τις 3 καλύτερες απαντήσεις
         top_results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
         context_chunks = [r["text"] for r in top_results]
 
-        # Build prompt & call LLM
+        # 🔹 Φτιάχνουμε prompt με ιστορικό
         prompt = build_prompt(CHAT_HISTORY, question, context_chunks)
-        response_text = call_llm(prompt)
 
-        # Update memory
+        # 🔹 Κλήση LLM (χρησιμοποίησε τη δική σου συνάρτηση που στέλνει prompt στο μοντέλο)
+        # Για παράδειγμα: response_text = call_llm(prompt)
+        response_text = "📝 Προσομοίωση απάντησης από LLM για παράδειγμα."  # αντικατάστησε με call_llm(prompt)
+
+        # 🔹 Ενημέρωση memory
         CHAT_HISTORY.append(("user", question))
         CHAT_HISTORY.append(("assistant", response_text))
         if len(CHAT_HISTORY) > MAX_HISTORY:
             CHAT_HISTORY[:] = CHAT_HISTORY[-MAX_HISTORY:]
 
-        # Pack answers with PDF links
+        # 🔹 Επιστροφή formatted απαντήσεων με PDF links
         answers = []
         for r in top_results:
             answer_text = clean_text(r["text"])
-            filename_pdf = re.sub(r"\.docx?$", ".pdf", r["filename"], flags=re.IGNORECASE)
+            filename_pdf = re.sub(r'\.docx?$', '.pdf', r["filename"], flags=re.IGNORECASE)
             encoded_filename = quote(filename_pdf)
             pdf_url = f"{PDF_BASE_URL}/{encoded_filename}#page={r['page']}"
 
@@ -160,14 +138,7 @@ def ask(query: Query):
             )
             answers.append({"answer": formatted, "score": r["score"]})
 
-        return {
-            "answers": answers,
-            "query": question,
-            "llm_answer": response_text
-        }
+        return {"answers": answers, "query": question, "llm_answer": response_text}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-# -------------------- Include router in app --------------------
-app.include_router(router)
