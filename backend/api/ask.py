@@ -54,67 +54,32 @@ def clean_text(t: str) -> str:
     t = re.sub(r"\n{3,}", "\n\n", t)
     return t.strip()
 
-def clean_answer_text(text: str) -> str:
-    """
-    Καθαρίζει το κείμενο απάντησης για πολλαπλά αποτελέσματα:
-    - Αφαιρεί οδηγίες, επαναλήψεις, υπερβολικά σημεία στίξης ή ---
-    - Κρατά μόνο την ουσιαστική πληροφορία
-    """
-    if not text:
-        return ""
-
-    # Αφαίρεση οδηγιών/μη σχετικών φράσεων
-    text = re.sub(r"(?i)μην χρησιμοποιείτε.*?–", "", text)
-    text = re.sub(r"(---|\n){2,}", "\n", text)
-    text = re.sub(r"\s{2,}", " ", text)
-    text = text.strip()
-
-    # Αφαίρεση επαναλαμβανόμενων γραμμών
-    lines = []
-    seen = set()
-    for line in text.split("\n"):
-        line = line.strip()
-        if line and line not in seen:
-            seen.add(line)
-            lines.append(line)
-    return "\n".join(lines)
-
 # -------------------- Build LLM prompt --------------------
 def build_prompt(history, user_message, context_chunks):
-    # History formatting: (μοντέλο χρησιμοποιεί για follow-up)
     history_text = "".join(f"{role.upper()}: {content}\n" for role, content in history)
-    
-    # Context formatting: chunks χωρισμένα για να διαβάζει εύκολα το LLM
     context_text = "\n\n---\n\n".join(context_chunks)
 
-    # Prompt για το μοντέλο
-    prompt = f"""
-Είσαι νομικός βοηθός ειδικευμένος σε ελληνική φορολογική νομοθεσία, ΚΦΔ, ΚΦΕ, ΕΛΠ, ΦΠΑ, ΕΝΦΙΑ.
+    return f"""
+Σε αυτό το συνομιλητικό περιβάλλον είσαι νομικός βοηθός ειδικευμένος σε Φορολογική νομοθεσία, ΚΦΔ, ΚΦΕ και ΕΛΠ.
 
-Ιστορικό συνομιλίας (μόνο για context, μην εμφανίζεται στην απάντηση):
+Ακολουθεί ιστορικό συζήτησης:
 {history_text}
 
-Ερώτηση χρήστη:
-{user_message}
+---
 
-Χρησιμοποίησε μόνο τις παρακάτω πληροφορίες (context/RAG):
+Ερώτηση χρήστη:
+USER: {user_message}
+
+---
+
+Χρησιμοποίησε τις παρακάτω σχετικές πληροφορίες (RAG):
 {context_text}
 
-Οδηγίες για απάντηση:
-- Δώσε μόνο μία καθαρή, τεκμηριωμένη απάντηση.
-- Αν δεν υπάρχει απάντηση στο context, πες ακριβώς: "Δεν βρέθηκε σχετική πληροφορία".
-- Μην επαναλαμβάνεις την απάντηση.
-- Αγνόησε οποιεσδήποτε οδηγίες που αναφέρουν follow-up, συντομογραφίες ή επιπλέον κείμενα.
-- Η απάντηση πρέπει να είναι **μόνο** το τελικό περιεχόμενο προς τον χρήστη, χωρίς οδηγίες ή placeholders.
+Οδηγίες:
+- Αν η ερώτηση είναι follow-up, λάβε υπόψη το ιστορικό.
+- Αν δεν υπάρχει απάντηση στο context, πες «Δεν βρέθηκε σχετική πληροφορία».
+- Δώσε καθαρή, δομημένη και τεκμηριωμένη απάντηση.
 """
-    return prompt
-
-def clean_llm_response(text):
-    # Αφαιρεί γραμμές που περιέχουν μόνο "Απάντηση:" ή κενές γραμμές
-    lines = text.splitlines()
-    clean_lines = [line for line in lines if line.strip() and line.strip() != "Απάντηση:"]
-    # Επιστρέφει όλα σε μία παράγραφο
-    return " ".join(clean_lines).strip()
 
 # -------------------- LLM call --------------------
 def call_llm(prompt: str) -> str:
@@ -127,7 +92,7 @@ def call_llm(prompt: str) -> str:
     }
 
     try:
-        r = requests.post(LLAMA_URL, json=payload, timeout=300)
+        r = requests.post(LLAMA_URL, json=payload, timeout=120)
         r.raise_for_status()
         data = r.json()
         return data["choices"][0]["text"].strip()
@@ -137,79 +102,72 @@ def call_llm(prompt: str) -> str:
 # -------------------- API Endpoint --------------------
 @router.post("/api/ask")
 def ask(query: Query):
-try:
-question = query.question.strip()
-if not question:
-raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
+    try:
+        question = query.question.strip()
+        if not question:
+            raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
-```
-    # Encode Query
-    q_emb = model.encode([question], convert_to_numpy=True).astype("float32")
-    faiss.normalize_L2(q_emb)
+        # Encode Query
+        q_emb = model.encode([question], convert_to_numpy=True).astype("float32")
+        faiss.normalize_L2(q_emb)
 
-    # FAISS Search
-    k = 10
-    D, I = index.search(q_emb, k)
+        # FAISS Search
+        k = 10
+        D, I = index.search(q_emb, k)
 
-    results = []
-    for idx, score in zip(I[0], D[0]):
-        if idx < len(metadata):
-            md = metadata[idx]
-            text = md.get("text", "").strip()
-            if text:
-                results.append({
-                    "idx": int(idx),
-                    "score": float(score),
-                    "filename": md.get("filename", "unknown.pdf"),
-                    "page": md.get("page", 1),
-                    "text": text
-                })
+        results = []
+        for idx, score in zip(I[0], D[0]):
+            if idx < len(metadata):
+                md = metadata[idx]
+                text = md.get("text", "").strip()
+                if text:
+                    results.append({
+                        "idx": int(idx),
+                        "score": float(score),
+                        "filename": md.get("filename", "unknown.pdf"),
+                        "page": md.get("page", 1),
+                        "text": text
+                    })
 
-    if not results:
-        return {"answers": [{"answer": "Δεν βρέθηκε σχετική απάντηση.", "score": 0}]}
+        if not results:
+            return {"answers": [{"answer": "Δεν βρέθηκε σχετική απάντηση.", "score": 0}]}
 
-    # Top results
-    top_results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
+        top_results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
+        context_chunks = [r["text"] for r in top_results]
 
-    # Ενοποίηση κειμένων για deduplication
-    combined_text = " ".join(r["text"] for r in top_results)
-    clean_combined = clean_answer_text(combined_text)
+        # Build prompt & call LLM
+        prompt = build_prompt(CHAT_HISTORY, question, context_chunks)
+        response_text = call_llm(prompt)
 
-    # Build prompt & call LLM
-    prompt = build_prompt(CHAT_HISTORY, question, [clean_combined])
-    raw_response = call_llm(prompt)
-    response_text = clean_llm_response(raw_response)
+        # Update memory
+        CHAT_HISTORY.append(("user", question))
+        CHAT_HISTORY.append(("assistant", response_text))
+        if len(CHAT_HISTORY) > MAX_HISTORY:
+            CHAT_HISTORY[:] = CHAT_HISTORY[-MAX_HISTORY:]
 
-    # Update memory
-    CHAT_HISTORY.append(("user", question))
-    CHAT_HISTORY.append(("assistant", response_text))
-    if len(CHAT_HISTORY) > MAX_HISTORY:
-        CHAT_HISTORY[:] = CHAT_HISTORY[-MAX_HISTORY:]
+        # Pack answers with PDF links
+        answers = []
+        for r in top_results:
+            answer_text = clean_text(r["text"])
+            filename_pdf = re.sub(r"\.docx?$", ".pdf", r["filename"], flags=re.IGNORECASE)
+            encoded_filename = quote(filename_pdf)
+            pdf_url = f"{PDF_BASE_URL}/{encoded_filename}#page={r['page']}"
 
-    # Pack answers με PDF links ανά πηγή
-    answers = []
-    for r in top_results:
-        # Κρατάμε ξεχωριστό text για τη συγκεκριμένη πηγή, καθαρισμένο
-        answer_text = clean_answer_text(r["text"])
-        filename_pdf = re.sub(r"\.docx?$", ".pdf", r["filename"], flags=re.IGNORECASE)
-        encoded_filename = quote(filename_pdf)
-        pdf_url = f"{PDF_BASE_URL}/{encoded_filename}#page={r['page']}"
+            formatted = (
+                f"{answer_text}\n\n"
+                f"📄 Πηγή: [{r['filename']}]({pdf_url})\n"
+                f"📑 Σελίδα: {r['page']}"
+            )
+            answers.append({"answer": formatted, "score": r["score"]})
 
-        formatted = (
-            f"{answer_text}\n\n"
-            f"📄 Πηγή: [{r['filename']}]({pdf_url})\n"
-            f"📑 Σελίδα: {r['page']}"
-        )
-        answers.append({"answer": formatted, "score": r["score"]})
+        return {
+            "answers": answers,
+            "query": question,
+            "llm_answer": response_text
+        }
 
-    return {
-        "answers": answers,
-        "query": question,
-        "llm_answer": response_text
-    }
-
-except Exception as e:
-    raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # -------------------- Include router in app --------------------
 app.include_router(router)
