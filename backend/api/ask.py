@@ -137,73 +137,79 @@ def call_llm(prompt: str) -> str:
 # -------------------- API Endpoint --------------------
 @router.post("/api/ask")
 def ask(query: Query):
-    try:
-        question = query.question.strip()
-        if not question:
-            raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
+try:
+question = query.question.strip()
+if not question:
+raise HTTPException(status_code=400, detail="Άδεια ερώτηση.")
 
-        # Encode Query
-        q_emb = model.encode([question], convert_to_numpy=True).astype("float32")
-        faiss.normalize_L2(q_emb)
+```
+    # Encode Query
+    q_emb = model.encode([question], convert_to_numpy=True).astype("float32")
+    faiss.normalize_L2(q_emb)
 
-        # FAISS Search
-        k = 10
-        D, I = index.search(q_emb, k)
+    # FAISS Search
+    k = 10
+    D, I = index.search(q_emb, k)
 
-        results = []
-        for idx, score in zip(I[0], D[0]):
-            if idx < len(metadata):
-                md = metadata[idx]
-                text = md.get("text", "").strip()
-                if text:
-                    results.append({
-                        "idx": int(idx),
-                        "score": float(score),
-                        "filename": md.get("filename", "unknown.pdf"),
-                        "page": md.get("page", 1),
-                        "text": text
-                    })
+    results = []
+    for idx, score in zip(I[0], D[0]):
+        if idx < len(metadata):
+            md = metadata[idx]
+            text = md.get("text", "").strip()
+            if text:
+                results.append({
+                    "idx": int(idx),
+                    "score": float(score),
+                    "filename": md.get("filename", "unknown.pdf"),
+                    "page": md.get("page", 1),
+                    "text": text
+                })
 
-        if not results:
-            return {"answers": [{"answer": "Δεν βρέθηκε σχετική απάντηση.", "score": 0}]}
+    if not results:
+        return {"answers": [{"answer": "Δεν βρέθηκε σχετική απάντηση.", "score": 0}]}
 
-        top_results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
-        context_chunks = [r["text"] for r in top_results]
+    # Top results
+    top_results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
 
-        # Build prompt & call LLM
-        prompt = build_prompt(CHAT_HISTORY, question, context_chunks)
-        raw_response = call_llm(prompt)
-        response_text = clean_llm_response(raw_response)
+    # Ενοποίηση κειμένων για deduplication
+    combined_text = " ".join(r["text"] for r in top_results)
+    clean_combined = clean_answer_text(combined_text)
 
-        # Update memory
-        CHAT_HISTORY.append(("user", question))
-        CHAT_HISTORY.append(("assistant", response_text))
-        if len(CHAT_HISTORY) > MAX_HISTORY:
-            CHAT_HISTORY[:] = CHAT_HISTORY[-MAX_HISTORY:]
+    # Build prompt & call LLM
+    prompt = build_prompt(CHAT_HISTORY, question, [clean_combined])
+    raw_response = call_llm(prompt)
+    response_text = clean_llm_response(raw_response)
 
-        # Pack answers with PDF links
-        answers = []
-        for r in top_results:
-            answer_text = clean_answer_text(r["text"])
-            filename_pdf = re.sub(r"\.docx?$", ".pdf", r["filename"], flags=re.IGNORECASE)
-            encoded_filename = quote(filename_pdf)
-            pdf_url = f"{PDF_BASE_URL}/{encoded_filename}#page={r['page']}"
+    # Update memory
+    CHAT_HISTORY.append(("user", question))
+    CHAT_HISTORY.append(("assistant", response_text))
+    if len(CHAT_HISTORY) > MAX_HISTORY:
+        CHAT_HISTORY[:] = CHAT_HISTORY[-MAX_HISTORY:]
 
-            formatted = (
-                f"{answer_text}\n\n"
-                f"📄 Πηγή: [{r['filename']}]({pdf_url})\n"
-                f"📑 Σελίδα: {r['page']}"
-            )
-            answers.append({"answer": formatted, "score": r["score"]})
+    # Pack answers με PDF links ανά πηγή
+    answers = []
+    for r in top_results:
+        # Κρατάμε ξεχωριστό text για τη συγκεκριμένη πηγή, καθαρισμένο
+        answer_text = clean_answer_text(r["text"])
+        filename_pdf = re.sub(r"\.docx?$", ".pdf", r["filename"], flags=re.IGNORECASE)
+        encoded_filename = quote(filename_pdf)
+        pdf_url = f"{PDF_BASE_URL}/{encoded_filename}#page={r['page']}"
 
-        return {
-            "answers": answers,
-            "query": question,
-            "llm_answer": response_text
-        }
+        formatted = (
+            f"{answer_text}\n\n"
+            f"📄 Πηγή: [{r['filename']}]({pdf_url})\n"
+            f"📑 Σελίδα: {r['page']}"
+        )
+        answers.append({"answer": formatted, "score": r["score"]})
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {
+        "answers": answers,
+        "query": question,
+        "llm_answer": response_text
+    }
+
+except Exception as e:
+    raise HTTPException(status_code=500, detail=str(e))
 
 # -------------------- Include router in app --------------------
 app.include_router(router)
