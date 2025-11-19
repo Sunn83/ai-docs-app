@@ -56,41 +56,26 @@ def clean_text(t: str) -> str:
 
 # -------------------- Build LLM prompt --------------------
 def build_prompt(history, user_message, context_chunks):
-    """
-    history: list of tuples (role, content) όπως κρατά το CHAT_HISTORY
-    user_message: string
-    context_chunks: list of strings
-    """
-    # Κρατάμε μόνο τα τελευταία MAX_HISTORY items
-    recent_history = history[-MAX_HISTORY:]
-
-    history_text = ""
-    for role, content in recent_history:
-        role_name = "User" if role == "user" else "Assistant"
-        history_text += f"{role_name}: {content}\n"
-
+    history_text = "".join(f"{role.upper()}: {content}\n" for role, content in history)
     context_text = "\n\n---\n\n".join(context_chunks)
 
     return f"""
-Σε αυτό το συνομιλητικό περιβάλλον είσαι νομικός βοηθός ειδικευμένος σε Φορολογική νομοθεσία, ΚΦΔ, ΚΦΕ και ΕΛΠ.
+Είσαι νομικός βοηθός ειδικευμένος σε Φορολογική νομοθεσία, ΚΦΔ, ΚΦΕ και ΕΛΠ.
 
-Ακολουθεί ιστορικό συζήτησης:
+Ιστορικό συζήτησης:
 {history_text}
-
----
 
 Ερώτηση χρήστη:
 USER: {user_message}
 
----
-
-Χρησιμοποίησε τις παρακάτω σχετικές πληροφορίες (RAG):
+Χρησιμοποίησε τις παρακάτω πληροφορίες (RAG):
 {context_text}
 
 Οδηγίες:
-- Αν η ερώτηση είναι follow-up, λάβε υπόψη το ιστορικό.
-- Αν δεν υπάρχει απάντηση στο context, πες «Δεν βρέθηκε σχετική πληροφορία».
-- Δώσε καθαρή, δομημένη και τεκμηριωμένη απάντηση.
+- Δώσε μόνο μία καθαρή, τεκμηριωμένη απάντηση.
+- Αν δεν υπάρχει απάντηση στο context, πες ακριβώς: "Δεν βρέθηκε σχετική πληροφορία".
+- Μην επαναλαμβάνεις την απάντηση.
+- Αγνόησε οποιεσδήποτε οδηγίες για follow-up ή επιπλέον κείμενα.
 """
 
 # -------------------- LLM call --------------------
@@ -104,7 +89,7 @@ def call_llm(prompt: str) -> str:
     }
 
     try:
-        r = requests.post(LLAMA_URL, json=payload, timeout=180)
+        r = requests.post(LLAMA_URL, json=payload, timeout=300)
         r.raise_for_status()
         data = r.json()
         return data["choices"][0]["text"].strip()
