@@ -54,6 +54,31 @@ def clean_text(t: str) -> str:
     t = re.sub(r"\n{3,}", "\n\n", t)
     return t.strip()
 
+def clean_answer_text(text: str) -> str:
+    """
+    Καθαρίζει το κείμενο απάντησης για πολλαπλά αποτελέσματα:
+    - Αφαιρεί οδηγίες, επαναλήψεις, υπερβολικά σημεία στίξης ή ---
+    - Κρατά μόνο την ουσιαστική πληροφορία
+    """
+    if not text:
+        return ""
+
+    # Αφαίρεση οδηγιών/μη σχετικών φράσεων
+    text = re.sub(r"(?i)μην χρησιμοποιείτε.*?–", "", text)
+    text = re.sub(r"(---|\n){2,}", "\n", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    text = text.strip()
+
+    # Αφαίρεση επαναλαμβανόμενων γραμμών
+    lines = []
+    seen = set()
+    for line in text.split("\n"):
+        line = line.strip()
+        if line and line not in seen:
+            seen.add(line)
+            lines.append(line)
+    return "\n".join(lines)
+
 # -------------------- Build LLM prompt --------------------
 def build_prompt(history, user_message, context_chunks):
     # History formatting: (μοντέλο χρησιμοποιεί για follow-up)
@@ -159,7 +184,7 @@ def ask(query: Query):
         # Pack answers with PDF links
         answers = []
         for r in top_results:
-            answer_text = clean_text(r["text"])
+            answer_text = clean_answer_text(r["text"])
             filename_pdf = re.sub(r"\.docx?$", ".pdf", r["filename"], flags=re.IGNORECASE)
             encoded_filename = quote(filename_pdf)
             pdf_url = f"{PDF_BASE_URL}/{encoded_filename}#page={r['page']}"
