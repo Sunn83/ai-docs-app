@@ -55,42 +55,43 @@ def clean_text(t: str) -> str:
     return t.strip()
 
 # -------------------- Build LLM prompt --------------------
-def build_prompt(question: str, history: list, context_chunks: list) -> str:
+def build_prompt(history, user_message, context_chunks):
+    """
+    history: list of tuples (role, content) όπως κρατά το CHAT_HISTORY
+    user_message: string
+    context_chunks: list of strings
+    """
+    # Κρατάμε μόνο τα τελευταία MAX_HISTORY items
+    recent_history = history[-MAX_HISTORY:]
+
     history_text = ""
-    for turn in history[-4:]:  # Κρατάμε μόνο τα τελευταία 4 turn για καθαρότητα
-        history_text += f"User: {turn['user']}\nAssistant: {turn['assistant']}\n"
+    for role, content in recent_history:
+        role_name = "User" if role == "user" else "Assistant"
+        history_text += f"{role_name}: {content}\n"
 
-    context_text = ""
-    for idx, chunk in enumerate(context_chunks, start=1):
-        context_text += f"[Context {idx}]\n{chunk}\n\n"
+    context_text = "\n\n---\n\n".join(context_chunks)
 
-    prompt = f"""
-You are ASTbooksAI, an expert assistant in Greek tax law, accounting, business regulations,
-ΕΝΦΙΑ, ΦΠΑ, ΓΕΜΗ, εισφορές, εργατικά, βιβλία–στοιχεία και ελληνική νομοθεσία.
+    return f"""
+Σε αυτό το συνομιλητικό περιβάλλον είσαι νομικός βοηθός ειδικευμένος σε Φορολογική νομοθεσία, ΚΦΔ, ΚΦΕ και ΕΛΠ.
 
-### RULES — FOLLOW STRICTLY
-1. Use the context ONLY if it is relevant.  
-2. DO NOT repeat the user's question.  
-3. DO NOT repeat or quote context text. Summarize in clean Greek.  
-4. DO NOT hallucinate. If information is missing, answer clearly:  
-   **«Δεν βρέθηκε σχετική πληροφορία στο διαθέσιμο υλικό.»**
-5. Provide one single, concise, professional answer — no duplication.  
-6. Keep the tone: καθαρό, τεχνικό, ελληνικά, χωρίς περιττές φράσεις.  
-7. If the user asks follow-up questions, use the conversation history.
-
-### Conversation History
+Ακολουθεί ιστορικό συζήτησης:
 {history_text}
 
-### Context Chunks (RAG)
+---
+
+Ερώτηση χρήστη:
+USER: {user_message}
+
+---
+
+Χρησιμοποίησε τις παρακάτω σχετικές πληροφορίες (RAG):
 {context_text}
 
-### User Question
-{question}
-
-### Your Answer (one clean paragraph or list, no repetition):
+Οδηγίες:
+- Αν η ερώτηση είναι follow-up, λάβε υπόψη το ιστορικό.
+- Αν δεν υπάρχει απάντηση στο context, πες «Δεν βρέθηκε σχετική πληροφορία».
+- Δώσε καθαρή, δομημένη και τεκμηριωμένη απάντηση.
 """
-
-    return prompt
 
 # -------------------- LLM call --------------------
 def call_llm(prompt: str) -> str:
