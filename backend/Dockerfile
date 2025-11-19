@@ -2,20 +2,15 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# HuggingFace cache fix — ΑΠΑΡΑΙΤΗΤΟ για να μην ξανακατεβάζει το μοντέλο
-ENV HF_HOME=/root/.cache/huggingface
+COPY . /app
 
-# System dependencies (curl + libreoffice)
+# 🧩 Εγκατάσταση system εργαλείων (curl + LibreOffice)
 RUN apt-get update && \
     apt-get install -y curl libreoffice && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Dependencies (ΠΟΛΥ πιο σωστό έτσι)
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy εφαρμογής
-COPY . .
+# 📦 Εγκατάσταση Python dependencies
+RUN pip install --no-cache-dir fastapi uvicorn python-docx pydantic faiss-cpu sentence-transformers PyMuPDF
 
 EXPOSE 8000
 
