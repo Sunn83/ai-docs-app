@@ -84,6 +84,12 @@ def build_prompt(history, user_message, context_chunks):
 """
     return prompt
 
+def clean_llm_response(text):
+    # Αφαιρεί γραμμές που περιέχουν μόνο "Απάντηση:" ή κενές γραμμές
+    lines = text.splitlines()
+    clean_lines = [line for line in lines if line.strip() and line.strip() != "Απάντηση:"]
+    # Επιστρέφει όλα σε μία παράγραφο
+    return " ".join(clean_lines).strip()
 
 # -------------------- LLM call --------------------
 def call_llm(prompt: str) -> str:
@@ -141,7 +147,8 @@ def ask(query: Query):
 
         # Build prompt & call LLM
         prompt = build_prompt(CHAT_HISTORY, question, context_chunks)
-        response_text = call_llm(prompt)
+        raw_response = call_llm(prompt)
+        response_text = clean_llm_response(raw_response)
 
         # Update memory
         CHAT_HISTORY.append(("user", question))
